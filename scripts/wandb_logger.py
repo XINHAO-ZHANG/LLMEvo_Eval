@@ -1,8 +1,10 @@
+import os
+import json
+import wandb
+from typing import Any
 
-import wandb, json
 import pandas as pd 
 import numpy as np
-from typing import Any
 from sklearn.decomposition import PCA
 
 def _hash_vec(obj: Any, dim: int = 16) -> np.ndarray:
@@ -53,5 +55,34 @@ def make_wandb_callback(project: str, cfg: dict):
                     title=f"Pop PCA scatter (gen {gen_idx})")
             }, step=gen_idx)
 
+        # save all population and children to CSV
+        gen_idx = log["gen"]
+        pop = log.get("population", [])
+        parent_rows = [
+            {"generation": gen_idx, "genome": json.dumps(p["genome"]), "score": p["score"], "type": "parent"}
+            for p in pop
+        ]
+
+        children = log.get("children", [])
+        child_scores = log.get("child_scores", [])
+        child_rows = [
+            {"generation": gen_idx, "genome": json.dumps(g), "score": s, "type": "child"}
+            for g, s in zip(children, child_scores)
+        ]
+
+        all_rows = parent_rows + child_rows
+        df = pd.DataFrame(all_rows)
+
+        model_name = cfg.get("model", "unknownmodel")
+        safe_model_name = model_name.replace("/", "_")
+        n_parent = cfg.get("parent_slots", "0")
+        n_child = cfg.get("child_slots", "0")
+        db_mode = cfg.get("db_mode", "unknowndb")
+        csv_path = f"{safe_model_name}_np{n_parent}_nc{n_child}_{db_mode}.csv"   
+        write_header = not os.path.exists(csv_path)
+        df.to_csv(csv_path, mode="a", header=write_header, index=False)
+
+        # upload CSV to wandb
+        run.save(csv_path)
 
     return _cb
