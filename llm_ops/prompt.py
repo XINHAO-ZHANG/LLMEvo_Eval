@@ -73,7 +73,7 @@ Your goal is to propose better solutions (lower score is better). """
         ```json
         {parent_block}
         ```
-        Please return one BETTER child genome as JSON without any extra text: {{ "genome": "<full-new>" }}
+        Please return one BETTER child genome as JSON without any extra text: {{ "genome": "<full-new>" }}. /no_think.
         """
     )
     return [{"role": "system", "content": sys},

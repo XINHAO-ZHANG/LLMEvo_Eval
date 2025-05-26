@@ -22,9 +22,13 @@ from typing import Dict, Any, List, Union
 import requests
 from openai import OpenAI, AzureOpenAI
 import openai
+from dotenv import load_dotenv
+
 # --------------------------------------------------------------------------- #
 # Client Initialization (using environment variables)
 # --------------------------------------------------------------------------- #
+
+load_dotenv()
 
 # OpenAI Client
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"),base_url=os.getenv("OPENAI_API_URL", "https://api.openai.com"))
@@ -130,6 +134,7 @@ def _call_openai(client: OpenAI, prompt, model, temperature, max_tokens, seed):
 
     resp = client.chat.completions.create(messages=messages, **kwargs)
     content = resp.choices[0].message.content
+    print(content)
     usage = resp.usage.to_dict() if resp.usage else None
 
     try:

@@ -9,6 +9,8 @@ models:
   - openai/gpt-4o
   - openai/gpt-3.5-turbo
   - vertex_ai/mistral-large
+  - Qwen/Qwen3-8B
+  - Qwen/Qwen3-30B-A3B
 
 tasks:
   - tsp
@@ -25,7 +27,7 @@ seeds: [0,1,2,3,4,5,6,7]     # 最大 seed，脚本只做 sanity check
 calls_budget: 200
 
 ga_params:
-  llm_max_tokens: 4096
+  llm_max_tokens: 163840
   parent_slots: 4
   child_slots: 8
   num_init: 40
