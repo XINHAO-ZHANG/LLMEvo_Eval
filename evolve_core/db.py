@@ -30,11 +30,29 @@ class SimplePoolDB:
     # ---------- lifecycle ----------
     def init(self, n_init: int, rng: random.Random | None = None) -> None:
         rng = rng or self.rng
-        self.pool = [(g, self.task.fitness(g))
-                     for g in self.task.seed_pool(n_init, rng)]
-        if self.capacity:
-            self.pool = self.pool[: self.capacity]
+        self.pool = []
+        self.genome_hashes = set()  # 重置哈希集
         
+        # 使用seed_pool生成初始基因组并添加到池中
+        for g in self.task.seed_pool(n_init, rng):
+            score = self.task.fitness(g)
+            genome_hash = self._hash_genome(g)
+            
+            # 跳过重复的基因组
+            if genome_hash in self.genome_hashes:
+                continue
+                
+            self.pool.append((g, score))
+            self.genome_hashes.add(genome_hash)
+            
+        if self.capacity and len(self.pool) > self.capacity:
+            self.pool = self.pool[: self.capacity]
+            # 重建哈希集
+            self.genome_hashes = set(self._hash_genome(g) for g, _ in self.pool)
+        
+        # 更新最佳分数
+        if self.pool:
+            self.best_score = min(score for _, score in self.pool)
 
     # ---------- public API ----------
 
@@ -81,6 +99,13 @@ class SimplePoolDB:
 
     def from_json(self, path: Path):
         self.pool = [tuple(p) for p in json.loads(path.read_text())]
+        # 重建哈希集
+        self.genome_hashes = set()
+        for g, _ in self.pool:
+            self.genome_hashes.add(self._hash_genome(g))
+        # 更新最佳分数
+        if self.pool:
+            self.best_score = min(score for _, score in self.pool)
 
 
 class _Bucket:
@@ -105,8 +130,8 @@ class MapElitesDB:
                  rng: random.Random | None = None) -> None:
         self.task = task_mod
         self.capacity = capacity
-        self.
         self.buckets: Dict[Any, _Bucket] = {}
+        self.key_fn = key_fn
         self.rng = rng or random.Random()
 
     # ---------- lifecycle ----------
