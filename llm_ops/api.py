@@ -125,6 +125,7 @@ def call_llm(
 # ────────────────────────────────────────────────────────────────────────────
 #  OpenAI
 # ────────────────────────────────────────────────────────────────────────────
+
 def _call_openai(client: OpenAI, prompt, model, temperature, max_tokens, seed):
     kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens)
     if seed is not None:
@@ -139,7 +140,7 @@ def _call_openai(client: OpenAI, prompt, model, temperature, max_tokens, seed):
     try:
         data = json.loads(content)
     except Exception:
-        # 尝试截取 ```json ... ``` 块
+        # 尝试截取 ```json ... ``` 
         import re, textwrap
         m = re.search(
     r'(?:```json(.*?)```|<think>\s*</think>\s*({.*?}))',
