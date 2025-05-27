@@ -95,11 +95,11 @@ python -m scripts.run_exp \
 ## Installation
 
 - Python 3.8+
-- Main dependencies: `openai`, `requests`, `wandb`, `numpy`, `pandas`, `scikit-learn`, `pyyaml`
+- Main dependencies: `openai`, `requests`, `wandb`, `numpy`, `pandas`, `scikit-learn`, `pyyaml`, `dotenv`
 - Example installation:
 
 ```bash
-pip install openai requests wandb numpy pandas scikit-learn pyyaml
+pip install openai requests wandb numpy pandas scikit-learn pyyaml dotenv
 ```
 
 ---

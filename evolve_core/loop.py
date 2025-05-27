@@ -82,10 +82,14 @@ def run_evolve(task_mod,
     gen_idx = 0
     while stats.calls < budget_calls:
         gen_idx += 1
-        parents, scores = db.sample(n_parent)
+        # 移除之前的单次采样
+        # parents, scores = db.sample(n_parent)
+        
         # 对于每个子代单独调用 LLM
         child_genomes, child_scores = [], []
         for _ in range(n_child):
+            # 为每个子代单独采样父代
+            parents, scores = db.sample(n_parent)
             prompt = build_evolve_prompt(task_mod, parents, scores)
 
             try:
