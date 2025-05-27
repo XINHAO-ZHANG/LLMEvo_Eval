@@ -134,7 +134,6 @@ def _call_openai(client: OpenAI, prompt, model, temperature, max_tokens, seed):
 
     resp = client.chat.completions.create(messages=messages, **kwargs)
     content = resp.choices[0].message.content
-    print(content)
     usage = resp.usage.to_dict() if resp.usage else None
 
     try:
@@ -142,13 +141,18 @@ def _call_openai(client: OpenAI, prompt, model, temperature, max_tokens, seed):
     except Exception:
         # 尝试截取 ```json ... ``` 块
         import re, textwrap
-        m = re.search(r'```json(.*?)```', content, re.S)
+        m = re.search(
+    r'(?:```json(.*?)```|<think>\s*</think>\s*({.*?}))',
+    content,
+    re.S)
         if m:
             try:
-                data = json.loads(m.group(1))
+                data = json.loads(m.group(1) or m.group(2))
             except Exception:
+                print(f"JSON parsing failed: {m.group(1) or m.group(2)}")
                 data = {"text": content}
         else:
+            print(f"JSON parsing failed: {content}")
             data = {"text": content}
     data["usage"] = usage or {"total_tokens": 0} # Provide default usage if None
     return data
