@@ -1,3 +1,6 @@
+# no csv files
+*.csv
+
 nohup.out
 wandb/
 runs/
