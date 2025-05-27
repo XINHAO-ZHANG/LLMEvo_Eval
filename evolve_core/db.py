@@ -25,6 +25,7 @@ class SimplePoolDB:
         self.rng = rng or random.Random()
         self.pool: List[Tuple[Genome, float]] = []
         self.best_score = float("inf")
+        self.genome_hashes = set()  # 用于检查唯一性
 
     # ---------- lifecycle ----------
     def init(self, n_init: int, rng: random.Random | None = None) -> None:
@@ -36,6 +37,11 @@ class SimplePoolDB:
         
 
     # ---------- public API ----------
+
+    def _hash_genome(self, genome: Genome) -> int:
+        """生成基因组的哈希值，用于检查唯一性"""
+        return hash(tuple(genome) if hasattr(genome, "__iter__") else genome)
+        
     def sample(self, k: int) -> Tuple[List[Genome], List[float]]:
         idx = self.rng.sample(range(len(self.pool)), k=min(k, len(self.pool)))
         parents, scores = zip(*[self.pool[i] for i in idx])
@@ -43,13 +49,27 @@ class SimplePoolDB:
 
     def add(self, genomes: List[Genome], scores: List[float]):
         for g, s in zip(genomes, scores):
+            genome_hash = self._hash_genome(g)
+
+            # 检查是否已存在相同或类似的基因组
+            if genome_hash in self.genome_hashes:
+                continue  # 跳过重复的基因组
+
+            # 加入新基因组
             self.pool.append((g, s))
+            self.genome_hashes.add(genome_hash)
             self.best_score = min(self.best_score, s)
         # 如果超过容量，则按 fitness 升序（假设越小越好）截断
         if self.capacity and len(self.pool) > self.capacity:
             # pool 是 List[ (genome, fitness) ]
             self.pool.sort(key=lambda gs: gs[1])
+
+            # 更新哈希集合以匹配保留的基因组
+            self.genome_hashes = set()
             self.pool = self.pool[: self.capacity]
+            for g, _ in self.pool:
+                self.genome_hashes.add(self._hash_genome(g))
+            
             self.best_score = self.pool[0][1]
 
     def get_best(self):
@@ -85,7 +105,7 @@ class MapElitesDB:
                  rng: random.Random | None = None) -> None:
         self.task = task_mod
         self.capacity = capacity
-        self.key_fn = key_fn or (lambda g: hash(tuple(g)))
+        self.
         self.buckets: Dict[Any, _Bucket] = {}
         self.rng = rng or random.Random()
 
@@ -106,7 +126,10 @@ class MapElitesDB:
 
     def add(self, genomes: List[Genome], scores: List[float]):
         for g, s in zip(genomes, scores):
-            k = self.key_fn(g)
+            if hasattr(self.task, "diversity_key"):
+                k = self.task.diversity_key(g)
+            else:
+                k = hash(tuple(g))
             bucket = self.buckets.setdefault(k, _Bucket())
             bucket.maybe_add(g, s)
             if len(self.buckets) > self.capacity:
