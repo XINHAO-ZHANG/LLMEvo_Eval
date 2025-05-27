@@ -130,6 +130,7 @@ class MapElitesDB:
                  rng: random.Random | None = None) -> None:
         self.task = task_mod
         self.capacity = capacity
+        self.key_fn = key_fn
         self.buckets: Dict[Any, _Bucket] = {}
         self.key_fn = key_fn
         self.rng = rng or random.Random()
