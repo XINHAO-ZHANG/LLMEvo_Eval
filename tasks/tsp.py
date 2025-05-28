@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import os
 import random
 import numpy as np
 
@@ -24,6 +25,7 @@ else:
     DIST = build_distance_matrix(coords)
     _INSTANCE_ID = f"tsp_dismat_{CITY_NUM}"
     # save 
+    os.makedirs("data/tsp", exist_ok=True)
     np.savetxt(f"data/tsp/{_INSTANCE_ID}.csv", DIST, delimiter="," ,fmt="%d")
 
 # ---------- genome helpers ----------
