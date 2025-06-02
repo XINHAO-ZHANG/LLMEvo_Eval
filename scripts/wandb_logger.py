@@ -40,20 +40,20 @@ def make_wandb_callback(project: str, cfg: dict):
                 "population/mean":     float(np.mean(pop_scores)),
             }, step=log["gen"])
 
-            # Scatter: embed genomes to 2-d with PCA on hash vectors
-            vecs = np.vstack([_hash_vec(p["genome"]) for p in pop])
-            coords = PCA(n_components=2, random_state=0).fit_transform(vecs)
+            # # Scatter: embed genomes to 2-d with PCA on hash vectors
+            # vecs = np.vstack([_hash_vec(p["genome"]) for p in pop])
+            # coords = PCA(n_components=2, random_state=0).fit_transform(vecs)
 
-            # prepare wandb Table
-            table = wandb.Table(columns=["x", "y", "score"])
-            for (x, y), p in zip(coords, pop):
-                table.add_data(float(x), float(y), float(p["score"]))
-            gen_idx = log["gen"]
-            run.log({
-                "diversity/scatter": wandb.plot.scatter(
-                    table, "x", "y",
-                    title=f"Pop PCA scatter (gen {gen_idx})")
-            }, step=gen_idx)
+            # # prepare wandb Table
+            # table = wandb.Table(columns=["x", "y", "score"])
+            # for (x, y), p in zip(coords, pop):
+            #     table.add_data(float(x), float(y), float(p["score"]))
+            # gen_idx = log["gen"]
+            # run.log({
+            #     "diversity/scatter": wandb.plot.scatter(
+            #         table, "x", "y",
+            #         title=f"Pop PCA scatter (gen {gen_idx})")
+            # }, step=gen_idx)
 
         # save all population and children to CSV
         gen_idx = log["gen"]

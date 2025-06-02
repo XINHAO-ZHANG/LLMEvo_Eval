@@ -27,7 +27,7 @@ def load_task(task_name: str):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", required=True, help="tsp | gcolor | promptopt | codegen")
+    ap.add_argument("--task", required=True, help="tsp | gcolor | promptopt | codegen | kernelopt")
     ap.add_argument("--model", required=True)
     ap.add_argument("--db_mode", default="simple", choices=["simple", "map"])
     ap.add_argument("--parent_slots", type=int, default=4)
