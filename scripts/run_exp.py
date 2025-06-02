@@ -61,7 +61,7 @@ def main():
         budget_calls=args.budget,
         db_mode=args.db_mode,
         db_kwargs={"capacity": args.capacity},
-        log_callback=make_wandb_callback(project=f"EvolveEval-{args.task}", cfg=vars(args)),
+        log_callback=make_wandb_callback(project=f"EvolveEval-{args.task}-new", cfg=vars(args)),
     )
     print("✅ Stats:",stats.dump())
     print("✅ Done. Best score:", stats.best_curve[-1])
