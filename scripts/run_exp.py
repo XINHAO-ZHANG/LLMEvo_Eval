@@ -22,6 +22,7 @@ def load_task(task_name: str):
     try:
         return importlib.import_module(f"{TASK_PKG}.{task_name}")
     except ModuleNotFoundError as e:
+        print(e)
         sys.exit(f"❌  Unknown task: {task_name}")
 
 

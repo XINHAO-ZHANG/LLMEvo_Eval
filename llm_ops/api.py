@@ -137,24 +137,25 @@ def _call_openai(client: OpenAI, prompt, model, temperature, max_tokens, seed):
     content = resp.choices[0].message.content
     usage = resp.usage.to_dict() if resp.usage else None
 
-    try:
-        data = json.loads(content)
-    except Exception:
-        # 尝试截取 ```json ... ``` 
-        import re, textwrap
-        m = re.search(
-    r'(?:```json(.*?)```|<think>\s*</think>\s*({.*?}))',
-    content,
-    re.S)
-        if m:
-            try:
-                data = json.loads(m.group(1) or m.group(2))
-            except Exception:
-                print(f"JSON parsing failed: {m.group(1) or m.group(2)}")
-                data = {"text": content}
-        else:
-            print(f"JSON parsing failed: {content}")
-            data = {"text": content}
+    # try:
+    #     data = json.loads(content)
+    # except Exception:
+    #     # 尝试截取 ```json ... ``` 
+    #     import re, textwrap
+    #     m = re.search(
+    # r'(?:```json(.*?)```|<think>\s*</think>\s*({.*?}))',
+    # content,
+    # re.S)
+    #     if m:
+    #         try:
+    #             data = json.loads(m.group(1) or m.group(2))
+    #         except Exception:
+    #             print(f"JSON parsing failed: {m.group(1) or m.group(2)}")
+    #             data = {"text": content}
+    #     else:
+    #         print(f"JSON parsing failed: {content}")
+    #         data = {"text": content}
+    data = {"text": content}
     data["usage"] = usage or {"total_tokens": 0} # Provide default usage if None
     return data
 

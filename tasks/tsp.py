@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+from textwrap import dedent
+import json
 import random
 import numpy as np
 
@@ -12,6 +14,7 @@ from tasks.utils import build_distance_matrix, random_points
 # ------------------------------ CONFIG ---------------------------------- #
 CITY_NUM = 30
  # fixed map for fair comp
+SYS_PROMPT = """You are an optimization expert helping to solve a hard problem. You will be shown several candidate solutions with their scores. Your goal is to propose better solutions (lower score is better). """
 
 MATRIX_PATH = ""
 if MATRIX_PATH:
@@ -53,9 +56,54 @@ def diversity_key(path):
     return tuple(path[:3])  # rough hash of first 3 cities
 
 # ------------------------- CONTEXT FOR LLM ------------------------------ #
-def get_ques() -> dict:
-    """Return instance data to feed LLM (may be huge!)."""
-    return {"distance_matrix": DIST.tolist()}
+def parse_response(resp: str) -> str:
+    content = resp["text"]
+    try:
+        data = json.loads(content)
+    except Exception:
+        # 尝试截取 ```json ... ``` 
+        import re, textwrap
+        m = re.search(
+    r'(?:```json(.*?)```|<think>\s*</think>\s*({.*?}))',
+    content,
+    re.S)
+        if m:
+            try:
+                data = json.loads(m.group(1) or m.group(2))
+            except Exception:
+                print(f"JSON parsing failed: {m.group(1) or m.group(2)}")
+                data = {"text": content}
+        else:
+            print(f"JSON parsing failed: {content}")
+            data = {"text": content}
+    data["usage"] = resp["usage"] or {"total_tokens": 0}
+    return data
+
+
+def get_evolve_prompt(sampled_parents: list[list[int]]):
+    parents, scores = zip(*sampled_parents)
+    sys = SYS_PROMPT
+    parent_block = json.dumps(
+        [{"genome":g, "score":s} for g,s in zip(parents,scores)],
+        ensure_ascii=False, indent=2
+    )
+    ques_block = json.dumps({"distance_matrix": DIST.tolist()}, ensure_ascii=False, indent=2)
+    user = dedent(
+        f"""
+        TASK DESC    : {describe()}
+        QUESTION    : {ques_block}
+        Here are {len(parents)} previous solutions and their scores:
+        ```json
+        {parent_block}
+        ```
+        Please return one BETTER child genome as JSON without any extra text: {{ "genome": "<full-new>" }}. 
+        """
+    )
+    
+    return [{"role": "system", "content": sys},
+            {"role": "user", "content": user}]
+    
+
 
 def describe() -> str:
     return (
@@ -64,24 +112,8 @@ def describe() -> str:
         "The distances between each pair of cities are provided below.The distance matrix is as follows (row i column j means distance from city i to city j):"
     )
 
-def get_genome_desc() -> str:
-    return f"A valid genome for the TSP task is a list of {CITY_NUM} unique integers from 0 to {CITY_NUM-1}."
+# def get_genome_desc() -> str:
+#     return f"A valid genome for the TSP task is a list of {CITY_NUM} unique integers from 0 to {CITY_NUM-1}."
 
-# def get_mutation_ops() -> str:
-#     return (
-#     "1. swap - to exchange the positions of two elements" 
-#     "2. relocate - to take out an element and insert it into another position" 
-#     "3. reverse - to reverse a subsequence"
-#     )
-
-# def get_mutation_ops_list() -> str:
-#         return """[
-#             {"type": "swap", "i": "<Index1>", "j": "<Index2>"},
-#             {"type": "relocate", "idx_from": "<IndexOrig>", "idx_to": "<IndexDest>"},
-#             {"type": "reverse", "start": "<IndexStart>", "end": "<IndexEnd>"},
-#           ]"""
-
-
-def crossover_guiline() -> str:
-    return "The crossover operator for the TSP is a simple one: two parent routes are combined to create a new child route. The child route is constructed by alternating the cities of the two parent routes, with a random number of cities from each parent included in the child. The resulting child route is then checked for validity and returned."
-
+# def crossover_guiline() -> str:
+#     return "The crossover operator for the TSP is a simple one: two parent routes are combined to create a new child route. The child route is constructed by alternating the cities of the two parent routes, with a random number of cities from each parent included in the child. The resulting child route is then checked for validity and returned."

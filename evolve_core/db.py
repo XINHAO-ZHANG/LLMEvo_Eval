@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json, random
+import numpy as np
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Callable
 
@@ -60,15 +61,16 @@ class SimplePoolDB:
         """生成基因组的哈希值，用于检查唯一性"""
         return hash(tuple(genome) if hasattr(genome, "__iter__") else genome)
         
-    def sample(self, k: int) -> Tuple[List[Genome], List[float]]:
-        pass
+    def sample(self, k: int) -> List[Dict]:
         # a fix: weighted selections
         # diminuer parents slots
         
-        # idx = self.rng.sample(range(len(self.pool)), k=min(k, len(self.pool)))
-        # parents, scores = zip(*[self.pool[i] for i in idx])
-        # return list(parents), list(scores)
-
+        fitness_value = np.array([g.fitness for g in self.pool])
+        # 取倒数，fitness越小，权重越大
+        weights = 1.0 / ( fitness_value + 1e-8)  # 加小常数避免除零
+        weights = weights / weights.sum()  # 归一化
+        idx = np.random.choice(len(self.pool), size=min(k, len(self.pool)), replace=False, p=weights)
+        return [self.pool[i] for i in idx]
     def add(self, genomes: List[Genome], scores: List[float]):
         for g, s in zip(genomes, scores):
             genome_hash = self._hash_genome(g)

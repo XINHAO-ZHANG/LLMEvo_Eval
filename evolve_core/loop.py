@@ -89,8 +89,8 @@ def run_evolve(task_mod,
         child_genomes, child_scores = [], []
         for _ in range(n_child):
             # 为每个子代单独采样父代
-            parents, scores = db.sample(n_parent)
-            prompt = build_evolve_prompt(task_mod, parents, scores)
+            sampled_parents = db.sample(n_parent)
+            prompt = task_mod.get_evolve_prompt(sampled_parents)
 
             try:
                 resp = call_llm(
@@ -98,7 +98,9 @@ def run_evolve(task_mod,
                 model=model_name,
                 max_tokens=4096,
                 seed=rng.randint(0, 2**30)
-            )
+                )
+                resp = task_mod.parse_response(resp)
+                import pdb; pdb.set_trace()
                 stats.calls += 1
             except Exception as e:
                 print(f"Error: {e}")
