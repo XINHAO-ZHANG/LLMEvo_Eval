@@ -61,9 +61,13 @@ class SimplePoolDB:
         return hash(tuple(genome) if hasattr(genome, "__iter__") else genome)
         
     def sample(self, k: int) -> Tuple[List[Genome], List[float]]:
-        idx = self.rng.sample(range(len(self.pool)), k=min(k, len(self.pool)))
-        parents, scores = zip(*[self.pool[i] for i in idx])
-        return list(parents), list(scores)
+        pass
+        # a fix: weighted selections
+        # diminuer parents slots
+        
+        # idx = self.rng.sample(range(len(self.pool)), k=min(k, len(self.pool)))
+        # parents, scores = zip(*[self.pool[i] for i in idx])
+        # return list(parents), list(scores)
 
     def add(self, genomes: List[Genome], scores: List[float]):
         for g, s in zip(genomes, scores):
