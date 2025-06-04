@@ -12,7 +12,7 @@ from pathlib import Path
 @dataclass
 class Genome:
     genome: Any
-    fitness: float
+    loss: float
     extra: Dict[str, Any] = field(default_factory=dict)
     # 可扩展更多属性
     # feedback: Any = None  # 如有需要可加
