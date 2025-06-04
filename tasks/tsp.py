@@ -79,9 +79,23 @@ def parse_response(resp: str) -> str:
     data["usage"] = resp["usage"] or {"total_tokens": 0}
     return data
 
+def get_zero_shot_prompt():
+    sys = SYS_PROMPT
+    ques_block = json.dumps({"distance_matrix": DIST.tolist()}, ensure_ascii=False, indent=2)
+    user = dedent(
+        f"""
+        TASK DESC    : {describe()}
+        QUESTION    : {ques_block}
+        Please return the optimal solution as JSON without any extra text: {{ "genome": "<full-new>" }}.
+        ATTENTION: The genome should be a list of {CITY_NUM} unique integers from 0 to {CITY_NUM-1}.
+        """
+    )
+    return [{"role": "system", "content": sys},
+            {"role": "user", "content": user}]
+
 
 def get_evolve_prompt(sampled_parents: list[list[int]]):
-    parents, scores = zip(*sampled_parents)
+    parents, scores = zip(*[(g.genome, g.fitness) for g in sampled_parents])
     sys = SYS_PROMPT
     parent_block = json.dumps(
         [{"genome":g, "score":s} for g,s in zip(parents,scores)],
@@ -97,6 +111,7 @@ def get_evolve_prompt(sampled_parents: list[list[int]]):
         {parent_block}
         ```
         Please return one BETTER child genome as JSON without any extra text: {{ "genome": "<full-new>" }}. 
+        ATTENTION: The genome should be a list of {CITY_NUM} unique integers from 0 to {CITY_NUM-1}.
         """
     )
     

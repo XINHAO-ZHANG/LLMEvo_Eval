@@ -3,12 +3,19 @@
 # ================================================
 from __future__ import annotations
 
+from dataclasses import dataclass, asdict, field
+from typing import Any, Dict, List, Tuple, Callable
 import json, random
 import numpy as np
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Callable
 
-Genome = Any
+@dataclass
+class Genome:
+    genome: Any
+    fitness: float
+    extra: Dict[str, Any] = field(default_factory=dict)
+    # 可扩展更多属性
+    # feedback: Any = None  # 如有需要可加
 
 class SimplePoolDB:
     """
@@ -24,7 +31,7 @@ class SimplePoolDB:
         self.task = task_mod
         self.capacity = capacity
         self.rng = rng or random.Random()
-        self.pool: List[Tuple[Genome, float]] = []
+        self.pool: List[Genome] = []
         self.best_score = float("inf")
         self.genome_hashes = set()  # 用于检查唯一性
 
@@ -43,35 +50,33 @@ class SimplePoolDB:
             if genome_hash in self.genome_hashes:
                 continue
                 
-            self.pool.append((g, score))
+            self.pool.append(Genome(g, score))
             self.genome_hashes.add(genome_hash)
             
         if self.capacity and len(self.pool) > self.capacity:
             self.pool = self.pool[: self.capacity]
             # 重建哈希集
-            self.genome_hashes = set(self._hash_genome(g) for g, _ in self.pool)
+            self.genome_hashes = set(self._hash_genome(g.genome) for g in self.pool)
         
         # 更新最佳分数
         if self.pool:
-            self.best_score = min(score for _, score in self.pool)
+            self.best_score = min(g.fitness for g in self.pool)
 
     # ---------- public API ----------
 
-    def _hash_genome(self, genome: Genome) -> int:
+    def _hash_genome(self, genome: Any) -> int:
         """生成基因组的哈希值，用于检查唯一性"""
         return hash(tuple(genome) if hasattr(genome, "__iter__") else genome)
         
-    def sample(self, k: int) -> List[Dict]:
-        # a fix: weighted selections
-        # diminuer parents slots
-        
-        fitness_value = np.array([g.fitness for g in self.pool])
-        # 取倒数，fitness越小，权重越大
-        weights = 1.0 / ( fitness_value + 1e-8)  # 加小常数避免除零
-        weights = weights / weights.sum()  # 归一化
-        idx = np.random.choice(len(self.pool), size=min(k, len(self.pool)), replace=False, p=weights)
-        return [self.pool[i] for i in idx]
-    def add(self, genomes: List[Genome], scores: List[float]):
+    def sample(self, k: int, top_frac: float = 0.2) -> List[Genome]:
+        # 先选出fitness最小的前N名，再从中随机采样k个
+        n_top = max(1, int(len(self.pool) * top_frac))
+        sorted_pool = sorted(self.pool, key=lambda g: g.fitness)
+        top_pool = sorted_pool[:n_top]
+        idx = np.random.choice(len(top_pool), size=min(k, len(top_pool)), weights=np.array([1.0 / (g.fitness + 1e-8) for g in top_pool]), replace=False)
+        return [top_pool[i] for i in idx]
+
+    def add(self, genomes: List[Any], scores: List[float]):
         for g, s in zip(genomes, scores):
             genome_hash = self._hash_genome(g)
 
@@ -80,38 +85,39 @@ class SimplePoolDB:
                 continue  # 跳过重复的基因组
 
             # 加入新基因组
-            self.pool.append((g, s))
+            self.pool.append(Genome(g, s))
             self.genome_hashes.add(genome_hash)
             self.best_score = min(self.best_score, s)
         # 如果超过容量，则按 fitness 升序（假设越小越好）截断
         if self.capacity and len(self.pool) > self.capacity:
             # pool 是 List[ (genome, fitness) ]
-            self.pool.sort(key=lambda gs: gs[1])
+            self.pool.sort(key=lambda g: g.fitness)
 
             # 更新哈希集合以匹配保留的基因组
             self.genome_hashes = set()
             self.pool = self.pool[: self.capacity]
-            for g, _ in self.pool:
-                self.genome_hashes.add(self._hash_genome(g))
+            for g in self.pool:
+                self.genome_hashes.add(self._hash_genome(g.genome))
             
-            self.best_score = self.pool[0][1]
+            self.best_score = self.pool[0].fitness
 
     def get_best(self):
         return self.best_score
 
     # ---------- persistence ----------
     def to_json(self, path: Path):
-        path.write_text(json.dumps(self.pool))
+        path.write_text(json.dumps([asdict(g) for g in self.pool]))
 
     def from_json(self, path: Path):
-        self.pool = [tuple(p) for p in json.loads(path.read_text())]
-        # 重建哈希集
+        # 读取为Genome对象
+        raw = json.loads(path.read_text())
+        self.pool = [Genome(**g) for g in raw]
         self.genome_hashes = set()
-        for g, _ in self.pool:
-            self.genome_hashes.add(self._hash_genome(g))
+        for g in self.pool:
+            self.genome_hashes.add(self._hash_genome(g.genome))
         # 更新最佳分数
         if self.pool:
-            self.best_score = min(score for _, score in self.pool)
+            self.best_score = min(g.fitness for g in self.pool)
 
 
 class _Bucket:

@@ -5,30 +5,41 @@
 import time, random, json, uuid
 from pathlib import Path
 from typing import List, Callable, Any
+import numpy as np
 
 from evolve_core.db import get_db, Genome
 from evolve_core.executor import batch_eval
 from llm_ops.api import call_llm
 from llm_ops.prompt import build_evolve_prompt   # adjust if located elsewhere
+from llm_ops.zero_shot_eval import evaluate_zero_shot
 
 
 LogCallback = Callable[[dict[str, Any]], None]
 
 class RunStats:
     def __init__(self, task_name: str, model: str, seed: int):
-        self.task = task_name; self.model = model; self.seed = seed
-        self.calls = 0; self.tok = 0; self.best_curve: List[float] = []
+        self.task = task_name
+        self.model = model
+        self.seed = seed
+        self.calls = 0
+        self.tok = 0
+        self.best_curve: List[float] = []
         self.wall = 0.0
+        # zero-shot相关
+        self.zero_shot_best = None  # 最佳zero-shot分数
+        self.zero_shot_score = None  # 整体平均zero-shot分数
+        
     def record(self, best_score: float):
         self.best_curve.append(best_score)
+        
     def dump(self):
         return self.__dict__
 
 def _snapshot_population(db):
     """Return current population as list[{genome, score}] (after truncation)."""
-    if hasattr(db, "pool"):                 # SimplePoolDB
-        return [{"genome": g, "score": s} for g, s in db.pool]
-    else:                                     # MAP‑Elites
+    if hasattr(db, "pool"):  # SimplePoolDB
+        return [{"genome": g.genome, "score": g.fitness} for g in db.pool]
+    else:  # MAP‑Elites
         flat = []
         for b in db.buckets.values():
             if b.best:
@@ -68,8 +79,55 @@ def run_evolve(task_mod,
     else:
        db.init(n_init, rng)
        n_init_actual = n_init
-    # 2) Stats -------------------------------------------------------------
-    stats = RunStats(task_mod.__name__, model_name, seed); t0 = time.time()
+
+    # 2) Zero-shot Evaluation --------------------------------------------------------
+    print(f"\n{'='*20} Zero-shot Evaluation {'='*20}")
+    
+    # 构造评估用的prompt
+    eval_prompt = task_mod.get_zero_shot_prompt()  
+    
+    # 评估zero-shot能力
+    zero_shot_results = evaluate_zero_shot(
+        prompt=eval_prompt,
+        model=model_name,
+        task=task_mod,
+        trials_per_temp=2,  # 每个temperature测试2次
+        temp_step=0.2,      # temperature从0到1，步长0.2
+    )
+    
+    # 计算整体zero-shot能力分数（所有temperature下mean的平均值）
+    zero_shot_score = np.mean([metrics['mean'] for metrics in zero_shot_results.values()])
+    zero_shot_best = min(zero_shot_results.items(), key=lambda x: x[1]['mean'])[0]
+    
+    print("\nZero-shot performance across temperatures:")
+    print("-" * 50)
+    print(f"{'Temp':>6} {'Mean':>10}")
+    print("-" * 50)
+    for temp, metrics in sorted(zero_shot_results.items()):
+        print(f"{temp:6.1f} {metrics['mean']:10.2f}")
+    print("-" * 50)
+    print(f"\nOverall Zero-shot Score: {zero_shot_score:.2f}")
+    print(f"{'='*20} Evaluation End {'='*20}\n")
+    
+    # 保存评估结果
+    zero_shot_path = out_dir / "zero_shot_eval.json"
+    zero_shot_path.write_text(
+        json.dumps({
+            "model": model_name,
+            "task": task_mod.__name__,
+            "seed": seed,
+            "results": zero_shot_results,
+            "zero_shot_score": float(zero_shot_score),
+            "zero_shot_best": float(zero_shot_best),
+            "timestamp": time.time()
+        }, indent=2)
+    )
+
+    # 3) Stats -------------------------------------------------------------
+    stats = RunStats(task_mod.__name__, model_name, seed)
+    stats.zero_shot_score = float(zero_shot_score)
+    stats.zero_shot_best = float(zero_shot_best)  # 记录最佳zero-shot分数
+    t0 = time.time()
     
     # -------- log generation 0 (seed only) --------
     pop0 = _snapshot_population(db)
@@ -78,6 +136,7 @@ def run_evolve(task_mod,
     seed_log = {"uuid": f"{model_name}_{task_mod.__name__}_{seed}_np{n_parent}_nc{n_child}_b{budget_calls}","gen": 0, "best_so_far": best0, "children":[],"child_scores": [0], "population": pop0}
     if log_callback: log_callback(seed_log)
     (out_dir / "gen_log.jsonl").open("a").write(json.dumps(seed_log)+"")
+
     # 3) Main loop ---------------------------------------------------------
     gen_idx = 0
     while stats.calls < budget_calls:
@@ -100,7 +159,6 @@ def run_evolve(task_mod,
                 seed=rng.randint(0, 2**30)
                 )
                 resp = task_mod.parse_response(resp)
-                import pdb; pdb.set_trace()
                 stats.calls += 1
             except Exception as e:
                 print(f"Error: {e}")

@@ -9,9 +9,11 @@ models:
   - openai/gpt-4.1
   - openai/gpt-4o
   - openai/gpt-3.5-turbo
+  - openai/o1-mini
   - vertex_ai/mistral-large
   - vertex_ai/gemini-1.5-flash
   - vertex_ai/gemini-2.0-flash
+  - vertex_ai/gemini-1.0
   - vertex_ai/gemini-1.5
   - vertex_ai/claude3.5-sonnet-v2
   - vertex_ai/gemini-2.0-flash
