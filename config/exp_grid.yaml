@@ -1,7 +1,30 @@
 defaults:
   - _self_
 
+
+# =========================
 # 全局默认参数
+# =========================
+# model: 
+#   - openai/gpt-4o
+#   - openai/gpt-4o-mini
+#   - openai/gpt-3.5-turbo
+#   - openai/o1-mini
+#   - vertex_ai/gemini-1.5
+#   - vertex_ai/claude-3.5-sonnet-v2
+#   - vertex_ai/mistral-large
+#   - vertex_ai/gemini-1.5-flash
+#   - ...
+# db_mode: [simple, map]
+# task: [tsp, gcolor, promptopt, codegen, kernelopt]
+# parent_slots: int
+# child_slots: int
+# n_init: int
+# budget: int
+# seed: int
+# capacity: int
+# init_pop_path: str or null
+
 model: gpt-4o
 db_mode: simple
 parent_slots: 4
@@ -12,7 +35,10 @@ seed: 0
 capacity: 40
 init_pop_path: null
 
-# 各任务专属参数
+# For task-specific options:
+# tsp:
+# kernelopt:
+
 tasks:
   tsp:
     n_init: 60

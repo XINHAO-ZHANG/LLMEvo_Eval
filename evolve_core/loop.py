@@ -141,36 +141,29 @@ def run_evolve(task_mod,
     gen_idx = 0
     while stats.calls < budget_calls:
         gen_idx += 1
-        # 移除之前的单次采样
-        # parents, scores = db.sample(n_parent)
-        
         # 对于每个子代单独调用 LLM
-        child_genomes, child_scores = [], []
+        child_genomes = []
         for _ in range(n_child):
-            # 为每个子代单独采样父代
             sampled_parents = db.sample(n_parent)
             prompt = task_mod.get_evolve_prompt(sampled_parents)
-
             try:
                 resp = call_llm(
-                prompt,
-                model=model_name,
-                max_tokens=4096,
-                seed=rng.randint(0, 2**30)
+                    prompt,
+                    model=model_name,
+                    max_tokens=4096,
+                    seed=rng.randint(0, 2**30)
                 )
-                resp = task_mod.parse_response(resp)
+                genome = task_mod.parse_response(resp)  # 直接返回Genome实例
                 stats.calls += 1
             except Exception as e:
                 print(f"Error: {e}")
                 stats.calls += 1
                 continue
-            
             stats.tok += resp.get("usage", {}).get("total_tokens", 0)
-            child_genome = resp.get("genome", [])
-            child_genomes.append(child_genome)
-        child_genomes = task_mod.repair(child_genomes)
-        child_scores = batch_eval(task_mod, child_genomes)
-        db.add(child_genomes, child_scores)
+            child_genomes.append(genome)
+        # # 可选修复
+        # child_genomes = task_mod.repair(child_genomes)  # 直接返回List[Genome]
+        db.add(child_genomes)
 
         # ---------- generation‑level metrics ----------
         if hasattr(db, "get_best"):
@@ -185,8 +178,8 @@ def run_evolve(task_mod,
         log = {
                 "uuid": f"{model_name}_{task_mod.__name__}_{seed}_np{n_parent}_nc{n_child}_b{budget_calls}",
                 "gen": gen_idx,
-                "children": child_genomes,
-                "child_scores": child_scores,
+                "children": [g.genome for g in child_genomes],
+                "child_scores": [g.loss for g in child_genomes],
                 "population": population,
                 "best_so_far": best,
             }
