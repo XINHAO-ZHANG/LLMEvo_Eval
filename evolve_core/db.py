@@ -70,10 +70,14 @@ class SimplePoolDB:
         n_top = max(1, int(len(self.pool) * top_frac))
         sorted_pool = sorted(self.pool, key=lambda g: g.loss)
         top_pool = sorted_pool[:n_top]
-        idx = np.random.choice(len(top_pool), size=min(k, len(top_pool)), weights=np.array([1.0 / (g.loss + 1e-8) for g in top_pool]), replace=False)
+        # 计算权重（概率），权重与损失成反比
+        weights = np.array([1.0 / (g.loss + 1e-8) for g in top_pool])
+        # 归一化为概率
+        probs = weights / weights.sum()
+        idx = np.random.choice(len(top_pool), size=min(k, len(top_pool)), p=probs, replace=False)
         return [top_pool[i] for i in idx]
 
-    def add(self, genomes: List[Any], scores: List[float]):
+    def add(self, genomes: List[Genome]):
         for g in genomes:
             genome_hash = self._hash_genome(g.genome)
 
@@ -108,7 +112,7 @@ class SimplePoolDB:
             self.genome_hashes.add(self._hash_genome(g.genome))
         # 更新最佳分数
         if self.pool:
-            self.best_score = min(g.fitness for g in self.pool)
+            self.best_score = min(g.loss for g in self.pool)
 
 
 class _Bucket:

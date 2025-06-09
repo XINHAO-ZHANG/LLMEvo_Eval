@@ -25,7 +25,8 @@ defaults:
 # capacity: int
 # init_pop_path: str or null
 
-model: gpt-4o
+task: tsp
+model: openai/gpt-4o-mini
 db_mode: simple
 parent_slots: 4
 child_slots: 8
@@ -46,9 +47,9 @@ tasks:
     child_slots: 12
     # 其他tsp专属参数
   kernelopt:
-    n_init: 30
-    parent_slots: 3
-    child_slots: 6
+    n_init: 2
+    parent_slots: 1
+    child_slots: 1
     # 其他kernelopt专属参数
   gcolor:
     n_init: 50

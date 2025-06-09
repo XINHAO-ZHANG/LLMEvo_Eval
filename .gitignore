@@ -5,6 +5,7 @@ nohup.out
 wandb/
 runs/
 results/
+outputs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

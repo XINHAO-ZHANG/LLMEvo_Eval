@@ -58,7 +58,7 @@ def evaluate_zero_shot(
     
     # 使用自定义函数或任务默认函数
     parse_fn = custom_parser or task.parse_response
-    fitness_fn = custom_fitness or task.fitness
+    fitness_fn = custom_fitness or task.eval
     
     # 生成temperature列表：0.0, 0.2, 0.4, 0.6, 0.8, 1.0
     temperatures = np.arange(0.0, 1.01, temp_step)
@@ -86,17 +86,29 @@ def evaluate_zero_shot(
                 
                 # 计算分数
                 score = fitness_fn(genome)
+                # 如果返回的是元组（例如kernelopt的eval函数），取第一个值作为分数
+                if isinstance(score, tuple):
+                    score = score[0]
                 scores.append(score)
             except Exception as e:
                 print(f"Error at temperature {temp}: {e}")
                 continue  # 跳过错误的结果，而不是添加0分
         
-        results[float(temp)] = {
-            'mean': float(np.mean(scores)),
-            'std': float(np.std(scores)),
-            'max': float(np.max(scores)),
-            'min': float(np.min(scores))
-        }
+        # 检查scores数组是否为空
+        if len(scores) == 0:
+            results[float(temp)] = {
+                'mean': float('nan'),
+                'std': float('nan'),
+                'max': float('nan'),
+                'min': float('nan')
+            }
+        else:
+            results[float(temp)] = {
+                'mean': float(np.mean(scores)),
+                'std': float(np.std(scores)),
+                'max': float(np.max(scores)),
+                'min': float(np.min(scores))
+            }
     
     return results
 

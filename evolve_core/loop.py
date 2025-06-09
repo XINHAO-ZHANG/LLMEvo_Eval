@@ -38,7 +38,7 @@ class RunStats:
 def _snapshot_population(db):
     """Return current population as list[{genome, score}] (after truncation)."""
     if hasattr(db, "pool"):  # SimplePoolDB
-        return [{"genome": g.genome, "score": g.fitness} for g in db.pool]
+        return [{"genome": g.genome, "score": g.loss} for g in db.pool]
     else:  # MAP‑Elites
         flat = []
         for b in db.buckets.values():
@@ -48,7 +48,8 @@ def _snapshot_population(db):
         return flat
 
 
-def run_evolve(task_mod,
+def run_evolve(cfg,
+               task_mod,
                model_name: str,
                *,
                seed: int = 0,
@@ -153,7 +154,18 @@ def run_evolve(task_mod,
                     max_tokens=4096,
                     seed=rng.randint(0, 2**30)
                 )
-                genome = task_mod.parse_response(resp)  # 直接返回Genome实例
+                parsed_resp = task_mod.parse_response(resp)  # 返回字典 {"genome": ...}
+                raw_genome = parsed_resp["genome"]
+                # 计算损失值
+                eval_result = task_mod.eval(raw_genome)
+                # 处理eval可能返回元组的情况(loss, extra_info)
+                if isinstance(eval_result, tuple):
+                    loss = eval_result[0]
+                    extra_info = eval_result[1] if len(eval_result) > 1 else ""
+                    genome = Genome(genome=raw_genome, loss=loss, extra={"feedback": extra_info})
+                else:
+                    loss = eval_result
+                    genome = Genome(genome=raw_genome, loss=loss, extra={})
                 stats.calls += 1
             except Exception as e:
                 print(f"Error: {e}")
@@ -161,8 +173,23 @@ def run_evolve(task_mod,
                 continue
             stats.tok += resp.get("usage", {}).get("total_tokens", 0)
             child_genomes.append(genome)
-        # # 可选修复
-        # child_genomes = task_mod.repair(child_genomes)  # 直接返回List[Genome]
+        # 可选修复
+        if hasattr(task_mod, "repair"):
+            raw_genomes = [g.genome for g in child_genomes]
+            repaired_genomes = task_mod.repair(raw_genomes)
+            # 重新创建Genome对象
+            new_child_genomes = []
+            for g in repaired_genomes:
+                eval_result = task_mod.eval(g)
+                if isinstance(eval_result, tuple):
+                    loss = eval_result[0]
+                    extra_info = eval_result[1] if len(eval_result) > 1 else ""
+                    new_child_genomes.append(Genome(genome=g, loss=loss, extra={"feedback": extra_info}))
+                else:
+                    loss = eval_result
+                    new_child_genomes.append(Genome(genome=g, loss=loss, extra={}))
+            child_genomes = new_child_genomes
+        
         db.add(child_genomes)
 
         # ---------- generation‑level metrics ----------

@@ -42,6 +42,7 @@ def main(cfg: DictConfig):
     safe_model_name = cfg.model.replace("/", "_")
 
     stats = run_evolve(
+        cfg=cfg,
         task_mod=task_mod,
         model_name=cfg.model,
         seed=cfg.seed,

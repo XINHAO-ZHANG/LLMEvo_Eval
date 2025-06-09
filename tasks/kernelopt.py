@@ -52,17 +52,23 @@ def seed_pool(n: int, rng: random.Random):
 
 def eval(genome, verbose=False):
     # genome: 生成的代码字符串
-    result = eval_kernel_against_ref(
-        ref_arch_src, genome, verbose=verbose, measure_performance=True, num_correct_trials=5, num_perf_trials=100
-    )
-    # 你可以根据 result 结构返回分数，比如用运行时间/正确性等
-    # return result.get("score", 0.0)
-    if not result.compiled:
-        return 1000, "Compile Error"
-    elif not result.correctness:
-        return 1000, "Calculation Result Incorrect"
-    else:
-        return result.runtime, "Success"
+    if not genome or genome.strip() == "":
+        return 1000.0, "Empty genome"
+    
+    try:
+        result = eval_kernel_against_ref(
+            ref_arch_src, genome, verbose=verbose, measure_performance=True, num_correct_trials=5, num_perf_trials=100
+        )
+        # 你可以根据 result 结构返回分数，比如用运行时间/正确性等
+        # return result.get("score", 0.0)
+        if not result.compiled:
+            return 1000.0, "Compile Error"
+        elif not result.correctness:
+            return 1000.0, "Calculation Result Incorrect"
+        else:
+            return float(result.runtime), "Success"
+    except Exception as e:
+        return 1000.0, f"Evaluation error: {str(e)}"
 
 def repair(genomes):
     # 可选：修复不合法的代码
@@ -76,8 +82,16 @@ def diversity_key(genome):
 # ------------------------- CONTEXT FOR LLM ------------------------------ #
 def parse_response(resp: dict) -> dict:
     content = resp["text"]
-    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
-    genome = Genome(genome=custom_cuda, fitness=None)
+    custom_cuda = extract_first_code(content, ["python", "cpp"])
+    genome = Genome(genome=custom_cuda, loss=None)
+    return {"genome": custom_cuda}
+
+def get_zero_shot_prompt():
+    sys_prompt = SYS_PROMPT
+    user_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
+    prompt = [{"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_prompt}]
+    return prompt
 
 def get_evolve_prompt(sampled_parents: list[list[int]]):
     user_prompt = prompt_generate_custom_cuda_from_prompt_template(ref_arch_src)
