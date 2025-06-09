@@ -8,7 +8,7 @@ import random
 import numpy as np
 
 from tasks.utils import build_distance_matrix, random_points
-
+from evolve_core.db import Genome
 
 
 # ------------------------------ CONFIG ---------------------------------- #
@@ -33,14 +33,15 @@ else:
 
 # ---------- genome helpers ----------
 def seed_pool(n: int, rng: random.Random):
-    return [rng.sample(range(CITY_NUM), CITY_NUM) for _ in range(n)]
+    genomes = [rng.sample(range(CITY_NUM), CITY_NUM) for _ in range(n)]
+    return [Genome(genome=g, loss=eval(g), extra={}) for g in genomes]
 
-def fitness(path):
+def eval(path):
     arr = np.asarray(path, dtype=int)
     return float(DIST[arr[:-1], arr[1:]].sum() + DIST[arr[-1], arr[0]])
 
-def repair(paths):
-    # ensure each path is a permutation
+
+def repair(paths: list[list[int]]) -> list[list[int]]:
     fixed = []
     for p in paths:
         seen = set(); new = []
@@ -52,8 +53,8 @@ def repair(paths):
         fixed.append(new[:CITY_NUM])
     return fixed
 
-def diversity_key(path):
-    return tuple(path[:3])  # rough hash of first 3 cities
+def diversity_key(g: Genome):
+    return tuple(g.genome[:3]) # rough hash of first 3 cities
 
 # ------------------------- CONTEXT FOR LLM ------------------------------ #
 def parse_response(resp: str) -> str:

@@ -14,8 +14,6 @@ class Genome:
     genome: Any
     loss: float
     extra: Dict[str, Any] = field(default_factory=dict)
-    # 可扩展更多属性
-    # feedback: Any = None  # 如有需要可加
 
 class SimplePoolDB:
     """
@@ -43,14 +41,13 @@ class SimplePoolDB:
         
         # 使用seed_pool生成初始基因组并添加到池中
         for g in self.task.seed_pool(n_init, rng):
-            score = self.task.fitness(g)
-            genome_hash = self._hash_genome(g)
+            genome_hash = self._hash_genome(g.genome)
             
             # 跳过重复的基因组
             if genome_hash in self.genome_hashes:
                 continue
                 
-            self.pool.append(Genome(g, score))
+            self.pool.append(g)
             self.genome_hashes.add(genome_hash)
             
         if self.capacity and len(self.pool) > self.capacity:
@@ -60,7 +57,7 @@ class SimplePoolDB:
         
         # 更新最佳分数
         if self.pool:
-            self.best_score = min(g.fitness for g in self.pool)
+            self.best_score = min(g.loss for g in self.pool)
 
     # ---------- public API ----------
 
@@ -71,35 +68,29 @@ class SimplePoolDB:
     def sample(self, k: int, top_frac: float = 0.2) -> List[Genome]:
         # 先选出fitness最小的前N名，再从中随机采样k个
         n_top = max(1, int(len(self.pool) * top_frac))
-        sorted_pool = sorted(self.pool, key=lambda g: g.fitness)
+        sorted_pool = sorted(self.pool, key=lambda g: g.loss)
         top_pool = sorted_pool[:n_top]
-        idx = np.random.choice(len(top_pool), size=min(k, len(top_pool)), weights=np.array([1.0 / (g.fitness + 1e-8) for g in top_pool]), replace=False)
+        idx = np.random.choice(len(top_pool), size=min(k, len(top_pool)), weights=np.array([1.0 / (g.loss + 1e-8) for g in top_pool]), replace=False)
         return [top_pool[i] for i in idx]
 
     def add(self, genomes: List[Any], scores: List[float]):
-        for g, s in zip(genomes, scores):
-            genome_hash = self._hash_genome(g)
+        for g in genomes:
+            genome_hash = self._hash_genome(g.genome)
 
             # 检查是否已存在相同或类似的基因组
             if genome_hash in self.genome_hashes:
                 continue  # 跳过重复的基因组
 
             # 加入新基因组
-            self.pool.append(Genome(g, s))
+            self.pool.append(g)
             self.genome_hashes.add(genome_hash)
-            self.best_score = min(self.best_score, s)
+            self.best_score = min(self.best_score, g.loss)
         # 如果超过容量，则按 fitness 升序（假设越小越好）截断
         if self.capacity and len(self.pool) > self.capacity:
-            # pool 是 List[ (genome, fitness) ]
-            self.pool.sort(key=lambda g: g.fitness)
-
-            # 更新哈希集合以匹配保留的基因组
-            self.genome_hashes = set()
-            self.pool = self.pool[: self.capacity]
-            for g in self.pool:
-                self.genome_hashes.add(self._hash_genome(g.genome))
-            
-            self.best_score = self.pool[0].fitness
+            self.pool.sort(key=lambda g: g.loss)
+            self.pool = self.pool[:self.capacity]
+            self.genome_hashes = set(self._hash_genome(g.genome) for g in self.pool)
+            self.best_score = self.pool[0].loss
 
     def get_best(self):
         return self.best_score
