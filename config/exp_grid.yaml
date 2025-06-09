@@ -11,7 +11,7 @@ defaults:
 #   - openai/gpt-3.5-turbo
 #   - openai/o1-mini
 #   - vertex_ai/gemini-1.5
-#   - vertex_ai/claude-3.5-sonnet-v2
+#   - vertex_ai/claude3.5-sonnet-v2
 #   - vertex_ai/mistral-large
 #   - vertex_ai/gemini-1.5-flash
 #   - ...
@@ -24,6 +24,7 @@ defaults:
 # seed: int
 # capacity: int
 # init_pop_path: str or null
+# enable_zero_shot_eval: bool
 
 task: tsp
 model: openai/gpt-4o-mini
@@ -35,6 +36,7 @@ budget: 200
 seed: 0
 capacity: 40
 init_pop_path: null
+enable_zero_shot_eval: false
 
 # For task-specific options:
 # tsp:
@@ -50,6 +52,7 @@ tasks:
     n_init: 2
     parent_slots: 1
     child_slots: 1
+    capacity: 2
     # 其他kernelopt专属参数
   gcolor:
     n_init: 50

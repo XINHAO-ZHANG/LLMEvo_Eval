@@ -82,52 +82,59 @@ def run_evolve(cfg,
        n_init_actual = n_init
 
     # 2) Zero-shot Evaluation --------------------------------------------------------
-    print(f"\n{'='*20} Zero-shot Evaluation {'='*20}")
+    enable_zero_shot = cfg.get("enable_zero_shot_eval", True)
+    zero_shot_score = None
+    zero_shot_best = None
     
-    # 构造评估用的prompt
-    eval_prompt = task_mod.get_zero_shot_prompt()  
-    
-    # 评估zero-shot能力
-    zero_shot_results = evaluate_zero_shot(
-        prompt=eval_prompt,
-        model=model_name,
-        task=task_mod,
-        trials_per_temp=2,  # 每个temperature测试2次
-        temp_step=0.2,      # temperature从0到1，步长0.2
-    )
-    
-    # 计算整体zero-shot能力分数（所有temperature下mean的平均值）
-    zero_shot_score = np.mean([metrics['mean'] for metrics in zero_shot_results.values()])
-    zero_shot_best = min(zero_shot_results.items(), key=lambda x: x[1]['mean'])[0]
-    
-    print("\nZero-shot performance across temperatures:")
-    print("-" * 50)
-    print(f"{'Temp':>6} {'Mean':>10}")
-    print("-" * 50)
-    for temp, metrics in sorted(zero_shot_results.items()):
-        print(f"{temp:6.1f} {metrics['mean']:10.2f}")
-    print("-" * 50)
-    print(f"\nOverall Zero-shot Score: {zero_shot_score:.2f}")
-    print(f"{'='*20} Evaluation End {'='*20}\n")
-    
-    # 保存评估结果
-    zero_shot_path = out_dir / "zero_shot_eval.json"
-    zero_shot_path.write_text(
-        json.dumps({
-            "model": model_name,
-            "task": task_mod.__name__,
-            "seed": seed,
-            "results": zero_shot_results,
-            "zero_shot_score": float(zero_shot_score),
-            "zero_shot_best": float(zero_shot_best),
-            "timestamp": time.time()
-        }, indent=2)
-    )
+    if enable_zero_shot:
+        print(f"\n{'='*20} Zero-shot Evaluation {'='*20}")
+        
+        # 构造评估用的prompt
+        eval_prompt = task_mod.get_zero_shot_prompt()  
+        
+        # 评估zero-shot能力
+        zero_shot_results = evaluate_zero_shot(
+            prompt=eval_prompt,
+            model=model_name,
+            task=task_mod,
+            trials_per_temp=2,  # 每个temperature测试2次
+            temp_step=0.2,      # temperature从0到1，步长0.2
+        )
+        
+        # 计算整体zero-shot能力分数（所有temperature下mean的平均值）
+        zero_shot_score = np.mean([metrics['mean'] for metrics in zero_shot_results.values()])
+        zero_shot_best = min(zero_shot_results.items(), key=lambda x: x[1]['mean'])[0]
+        
+        print("\nZero-shot performance across temperatures:")
+        print("-" * 50)
+        print(f"{'Temp':>6} {'Mean':>10}")
+        print("-" * 50)
+        for temp, metrics in sorted(zero_shot_results.items()):
+            print(f"{temp:6.1f} {metrics['mean']:10.2f}")
+        print("-" * 50)
+        print(f"\nOverall Zero-shot Score: {zero_shot_score:.2f}")
+        print(f"{'='*20} Evaluation End {'='*20}\n")
+        
+        # 保存评估结果
+        zero_shot_path = out_dir / "zero_shot_eval.json"
+        zero_shot_path.write_text(
+            json.dumps({
+                "model": model_name,
+                "task": task_mod.__name__,
+                "seed": seed,
+                "results": zero_shot_results,
+                "zero_shot_score": float(zero_shot_score),
+                "zero_shot_best": float(zero_shot_best),
+                "timestamp": time.time()
+            }, indent=2)
+        )
+    else:
+        print(f"\n{'='*20} Skipping Zero-shot Evaluation {'='*20}\n")
 
     # 3) Stats -------------------------------------------------------------
     stats = RunStats(task_mod.__name__, model_name, seed)
-    stats.zero_shot_score = float(zero_shot_score)
-    stats.zero_shot_best = float(zero_shot_best)  # 记录最佳zero-shot分数
+    stats.zero_shot_score = float(zero_shot_score) if zero_shot_score is not None else None
+    stats.zero_shot_best = float(zero_shot_best) if zero_shot_best is not None else None
     t0 = time.time()
     
     # -------- log generation 0 (seed only) --------
