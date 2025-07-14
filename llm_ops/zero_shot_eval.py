@@ -16,33 +16,28 @@ class Task(Protocol):
     def parse_response(self, resp: Dict[str, Any]) -> Any:
         """解析LLM响应"""
         ...
-    
-    def fitness(self, parsed_output: Any) -> float:
-        """计算适应度分数"""
+    def eval(self, genome: Any, split: str = "train") -> float:
+        """评估基因组的性能"""
         ...
 
 def evaluate_zero_shot(
-    prompt: Union[str, List[Dict[str, str]]],
+    prompt_func: Callable[[int, int, int], str],
     model: str,
     task: Task,
     trials_per_temp: int = 2,
     temp_step: float = 0.2,
-    max_tokens: int = 4096,
-    custom_parser: Optional[Callable[[Dict[str, Any]], Any]] = None,
-    custom_fitness: Optional[Callable[[Any], float]] = None,
+    base_seed: int = 42,
 ) -> Dict[float, Dict[str, float]]:
     """
-    用不同temperature评估模型的zero-shot能力
+    评估zero-shot性能
     
     参数:
-        prompt: 提示词或消息列表
+        prompt_func: 生成提示的函数，应该接受seed, temperature_index, call_index参数
         model: 模型名称
-        task: 任务对象，必须实现parse_response和fitness方法
-        trials_per_temp: 每个temperature测试次数
-        temp_step: temperature间隔（默认0.2）
-        max_tokens: 最大token数
-        custom_parser: 可选的自定义解析函数，覆盖task的parse_response
-        custom_fitness: 可选的自定义适应度函数，覆盖task的fitness
+        task: 任务模块
+        trials_per_temp: 每个温度的试验次数
+        temp_step: 温度步长
+        base_seed: 基础随机种子
     
     返回:
         Dict[float, Dict[str, float]]: {
@@ -54,62 +49,52 @@ def evaluate_zero_shot(
             }
         }
     """
+    temperatures = np.arange(0.0, 1.0 + temp_step, temp_step)
     results = {}
     
-    # 使用自定义函数或任务默认函数
-    parse_fn = custom_parser or task.parse_response
-    fitness_fn = custom_fitness or task.eval
-    
-    # 生成temperature列表：0.0, 0.2, 0.4, 0.6, 0.8, 1.0
-    temperatures = np.arange(0.0, 1.01, temp_step)
-    
-    for temp in temperatures:
-        scores = []
-        for _ in range(trials_per_temp):
-            try:
-                # 调用LLM
-                output = call_llm(
-                    prompt_or_msgs=prompt,
-                    model=model,
-                    temperature=float(temp),
-                    max_tokens=max_tokens,
-                )
-                
-                # 解析输出
-                parsed = parse_fn(output)
-                print(parsed)
-                
-                # 对于TSP等任务，parsed是一个dict，需要取出genome
-                if isinstance(parsed, dict) and "genome" in parsed:
-                    genome = parsed["genome"]
-
-                
-                # 计算分数
-                score = fitness_fn(genome)
-                # 如果返回的是元组（例如kernelopt的eval函数），取第一个值作为分数
-                if isinstance(score, tuple):
-                    score = score[0]
-                scores.append(score)
-            except Exception as e:
-                print(f"Error at temperature {temp}: {e}")
-                continue  # 跳过错误的结果，而不是添加0分
+    for temp_idx, temp in enumerate(temperatures):
+        temp_results = []
         
-        # 检查scores数组是否为空
-        if len(scores) == 0:
-            results[float(temp)] = {
-                'mean': float('nan'),
-                'std': float('nan'),
-                'max': float('nan'),
-                'min': float('nan')
+        for call_idx in range(trials_per_temp):
+            try:
+                # 传递种子信息给prompt函数
+                if hasattr(prompt_func, '__code__') and 'seed' in prompt_func.__code__.co_varnames:
+                    prompt = prompt_func(seed=base_seed, temperature_index=temp_idx, call_index=call_idx)
+                else:
+                    prompt = prompt_func()
+                
+                response = call_llm(prompt, model=model, temperature=temp)
+                parsed = task.parse_response(response)
+                genome = parsed.get("genome", "")
+                
+                if genome:
+                    score = task.eval(genome, split="train")
+                    if not np.isnan(score) and not np.isinf(score):
+                        temp_results.append(score)
+                        print(f"  Temp {temp:.1f}, Call {call_idx+1}: {score:.4f}")
+                    else:
+                        print(f"  Temp {temp:.1f}, Call {call_idx+1}: Invalid score")
+                else:
+                    print(f"  Temp {temp:.1f}, Call {call_idx+1}: Failed to parse")
+                    
+            except Exception as e:
+                print(f"  Temp {temp:.1f}, Call {call_idx+1}: Error - {e}")
+        
+        if temp_results:
+            results[temp] = {
+                'mean': np.mean(temp_results),
+                'std': np.std(temp_results),
+                'count': len(temp_results),
+                'scores': temp_results
             }
         else:
-            results[float(temp)] = {
-                'mean': float(np.mean(scores)),
-                'std': float(np.std(scores)),
-                'max': float(np.max(scores)),
-                'min': float(np.min(scores))
+            results[temp] = {
+                'mean': np.nan,
+                'std': np.nan, 
+                'count': 0,
+                'scores': []
             }
-    
+            
     return results
 
 def evaluate_batch_zero_shot(

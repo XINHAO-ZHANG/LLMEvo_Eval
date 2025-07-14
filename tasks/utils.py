@@ -11,7 +11,7 @@ import random
 from typing import List, Tuple
 
 import numpy as np
-
+import evaluate
 
 # --------------------------------------------------------------------------- #
 # TSP utilities
@@ -35,3 +35,32 @@ def random_graph(n: int, p: float, seed: int) -> List[Tuple[int, int]]:
     rng = random.Random(seed)
     edges = [(i, j) for i in range(n) for j in range(i + 1, n) if rng.random() < p]
     return edges
+
+
+# --------------------------------------------------------------------------- #
+# Text Evaluation Metrics (ROUGE, SARI)
+# --------------------------------------------------------------------------- #
+
+def compute_rouge(preds: list[str], refs: list[str]) -> dict:
+    """
+    计算ROUGE-1/2/L分数，严格调用HuggingFace evaluate库。
+    preds: 生成的摘要列表
+    refs:  参考摘要列表
+    返回: dict, 包含rouge1/rouge2/rougeL等分数
+    """
+    rouge = evaluate.load("rouge")
+    results = rouge.compute(predictions=preds, references=refs)
+    return results
+
+
+def compute_sari(sources: list[str], preds: list[str], refs: list[list[str]]) -> dict:
+    """
+    sources: 原始句子列表
+    preds:   生成的简化句子列表
+    refs:    多参考简化句子列表（每个元素是list of refs）
+    返回: dict, 包含sari等分数
+    """
+    
+    sari = evaluate.load("sari")
+    results = sari.compute(sources=sources, predictions=preds, references=refs)
+    return results

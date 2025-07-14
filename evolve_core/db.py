@@ -15,6 +15,23 @@ class Genome:
     loss: float
     extra: Dict[str, Any] = field(default_factory=dict)
 
+    def _to_tuple(self, x):
+        if isinstance(x, (list, tuple)):
+            return tuple(self._to_tuple(i) for i in x)
+        elif hasattr(x, 'tolist'):  # 兼容numpy array
+            return tuple(self._to_tuple(i) for i in x.tolist())
+        else:
+            return x
+
+    def __hash__(self):
+        # 只用genome字段参与hash，loss和extra不参与
+        return hash(self._to_tuple(self.genome))
+
+    def __eq__(self, other):
+        if not isinstance(other, Genome):
+            return False
+        return self._to_tuple(self.genome) == self._to_tuple(other.genome)
+
 class SimplePoolDB:
     """
     A minimal random‑sampling population store.
@@ -41,19 +58,15 @@ class SimplePoolDB:
         
         # 使用seed_pool生成初始基因组并添加到池中
         for g in self.task.seed_pool(n_init, rng):
-            genome_hash = self._hash_genome(g.genome)
-            
-            # 跳过重复的基因组
-            if genome_hash in self.genome_hashes:
+            if g in self.genome_hashes:
                 continue
-                
             self.pool.append(g)
-            self.genome_hashes.add(genome_hash)
+            self.genome_hashes.add(g)
             
         if self.capacity and len(self.pool) > self.capacity:
             self.pool = self.pool[: self.capacity]
             # 重建哈希集
-            self.genome_hashes = set(self._hash_genome(g.genome) for g in self.pool)
+            self.genome_hashes = set(g for g in self.pool)
         
         # 更新最佳分数
         if self.pool:
@@ -79,21 +92,16 @@ class SimplePoolDB:
 
     def add(self, genomes: List[Genome]):
         for g in genomes:
-            genome_hash = self._hash_genome(g.genome)
-
-            # 检查是否已存在相同或类似的基因组
-            if genome_hash in self.genome_hashes:
-                continue  # 跳过重复的基因组
-
-            # 加入新基因组
+            if g in self.genome_hashes:
+                continue
             self.pool.append(g)
-            self.genome_hashes.add(genome_hash)
+            self.genome_hashes.add(g)
             self.best_score = min(self.best_score, g.loss)
         # 如果超过容量，则按 fitness 升序（假设越小越好）截断
         if self.capacity and len(self.pool) > self.capacity:
             self.pool.sort(key=lambda g: g.loss)
             self.pool = self.pool[:self.capacity]
-            self.genome_hashes = set(self._hash_genome(g.genome) for g in self.pool)
+            self.genome_hashes = set(g for g in self.pool)
             self.best_score = self.pool[0].loss
 
     def get_best(self):
@@ -109,7 +117,7 @@ class SimplePoolDB:
         self.pool = [Genome(**g) for g in raw]
         self.genome_hashes = set()
         for g in self.pool:
-            self.genome_hashes.add(self._hash_genome(g.genome))
+            self.genome_hashes.add(g)
         # 更新最佳分数
         if self.pool:
             self.best_score = min(g.loss for g in self.pool)

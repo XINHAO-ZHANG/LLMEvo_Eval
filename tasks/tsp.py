@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -6,30 +5,44 @@ from textwrap import dedent
 import json
 import random
 import numpy as np
+import re
+import ast
+from pathlib import Path
 
 from tasks.utils import build_distance_matrix, random_points
 from evolve_core.db import Genome
 
 
 # ------------------------------ CONFIG ---------------------------------- #
-CITY_NUM = 30
- # fixed map for fair comp
-SYS_PROMPT = """You are an optimization expert helping to solve a hard problem. You will be shown several candidate solutions with their scores. Your goal is to propose better solutions (lower score is better). """
 
-MATRIX_PATH = ""
-if MATRIX_PATH:
-    DIST = np.loadtxt(MATRIX_PATH, delimiter=",")
-    CITY_NUM = DIST.shape[0]
-    if DIST.shape[0] != DIST.shape[1]:
-        raise ValueError("Distance matrix must be square")
-    
-else:
-    coords = random_points(CITY_NUM, 42)
-    DIST = build_distance_matrix(coords)
+# 获取项目根目录的绝对路径
+PROJECT_ROOT = Path(__file__).parent.parent  # tasks目录的上一级
+DATA_DIR = PROJECT_ROOT / "data" / "tsp"
+
+CITY_NUM = 30  # 默认
+DIST = None
+SYS_PROMPT = """You are an optimization expert helping to solve a hard problem. You will be shown several candidate solutions with their scores. Your goal is to propose better solutions (lower score is better). """
+def configure(cfg=None):
+    global CITY_NUM, DIST
+    if cfg and hasattr(cfg, "city_num"):
+        CITY_NUM = int(cfg.city_num)
+    print(f"TSP configured with CITY_NUM={CITY_NUM}")
+
     _INSTANCE_ID = f"tsp_dismat_{CITY_NUM}"
-    # save 
-    os.makedirs("data/tsp", exist_ok=True)
-    np.savetxt(f"data/tsp/{_INSTANCE_ID}.csv", DIST, delimiter="," ,fmt="%d")
+    DIST_PATH = DATA_DIR / f"{_INSTANCE_ID}.csv"
+
+    if DIST_PATH.exists():
+        DIST = np.loadtxt(DIST_PATH, delimiter=",")
+        if DIST.shape[0] != CITY_NUM or DIST.shape[1] != CITY_NUM:
+            print(f"Distance matrix shape mismatch, regenerating for CITY_NUM={CITY_NUM}")
+            coords = random_points(CITY_NUM, 42)
+            DIST = build_distance_matrix(coords)
+            np.savetxt(DIST_PATH, DIST, delimiter=",", fmt="%d")
+    else:
+        coords = random_points(CITY_NUM, 42)
+        DIST = build_distance_matrix(coords)
+        DIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        np.savetxt(DIST_PATH, DIST, delimiter=",", fmt="%d")
 
 # ---------- genome helpers ----------
 def seed_pool(n: int, rng: random.Random):
@@ -57,28 +70,79 @@ def diversity_key(g: Genome):
     return tuple(g.genome[:3]) # rough hash of first 3 cities
 
 # ------------------------- CONTEXT FOR LLM ------------------------------ #
-def parse_response(resp: str) -> str:
-    content = resp["text"]
+def parse_response(resp):
+    content = resp.get("text", "")
+    # 1. 先找json代码块
+    m = re.search(r'```json(.*?)```', content, re.S)
+    if m:
+        try:
+            data = json.loads(m.group(1))
+            data["usage"] = resp.get("usage", {"total_tokens": 0})
+            # genome为字符串时，尝试转为list
+            if isinstance(data.get("genome"), str):
+                try:
+                    genome_eval = ast.literal_eval(data["genome"])
+                    if isinstance(genome_eval, list):
+                        data["genome"] = genome_eval
+                except Exception:
+                    pass
+            return data
+        except Exception:
+            pass
+    # 2. 直接找大括号
+    m = re.search(r'({[^{}]*"genome"[^{}]*})', content, re.S)
+    if m:
+        try:
+            data = json.loads(m.group(1))
+            data["usage"] = resp.get("usage", {"total_tokens": 0})
+            if isinstance(data.get("genome"), str):
+                try:
+                    genome_eval = ast.literal_eval(data["genome"])
+                    if isinstance(genome_eval, list):
+                        data["genome"] = genome_eval
+                except Exception:
+                    pass
+            return data
+        except Exception:
+            try:
+                data = ast.literal_eval(m.group(1))
+                data["usage"] = resp.get("usage", {"total_tokens": 0})
+                if isinstance(data.get("genome"), str):
+                    try:
+                        genome_eval = ast.literal_eval(data["genome"])
+                        if isinstance(genome_eval, list):
+                            data["genome"] = genome_eval
+                    except Exception:
+                        pass
+                return data
+            except Exception:
+                pass
+    # 3. 只找genome数组（字符串或列表）
+    m = re.search(r'"genome"\s*:\s*(\[.*?\])', content, re.S)
+    if m:
+        arr_str = m.group(1).strip()
+        try:
+            genome = ast.literal_eval(arr_str)
+            if isinstance(genome, list):
+                return {"genome": genome, "usage": resp.get("usage", {"total_tokens": 0})}
+        except Exception:
+            pass
+    # 4. 兜底：如果resp本身是json字符串
     try:
         data = json.loads(content)
-    except Exception:
-        # 尝试截取 ```json ... ``` 
-        import re, textwrap
-        m = re.search(
-    r'(?:```json(.*?)```|<think>\s*</think>\s*({.*?}))',
-    content,
-    re.S)
-        if m:
+        if isinstance(data.get("genome"), str):
             try:
-                data = json.loads(m.group(1) or m.group(2))
+                genome_eval = ast.literal_eval(data["genome"])
+                if isinstance(genome_eval, list):
+                    data["genome"] = genome_eval
             except Exception:
-                print(f"JSON parsing failed: {m.group(1) or m.group(2)}")
-                data = {"text": content}
-        else:
-            print(f"JSON parsing failed: {content}")
-            data = {"text": content}
-    data["usage"] = resp["usage"] or {"total_tokens": 0}
-    return data
+                pass
+        data["usage"] = resp.get("usage", {"total_tokens": 0})
+        return data
+    except Exception:
+        pass
+    # 5. 兜底
+    return {"genome": None, "text": content, "usage": resp.get("usage", {"total_tokens": 0})}
 
 def get_zero_shot_prompt():
     sys = SYS_PROMPT
@@ -87,7 +151,7 @@ def get_zero_shot_prompt():
         f"""
         TASK DESC    : {describe()}
         QUESTION    : {ques_block}
-        Please return the optimal solution as JSON without any extra text: {{ "genome": "<full-new>" }}.
+        Please return the optimal solution as JSON without any extra explanation: {{ "genome": "<full-new>" }}.
         ATTENTION: The genome should be a list of {CITY_NUM} unique integers from 0 to {CITY_NUM-1}.
         """
     )
@@ -96,7 +160,7 @@ def get_zero_shot_prompt():
 
 
 def get_evolve_prompt(sampled_parents: list[list[int]]):
-    parents, scores = zip(*[(g.genome, g.fitness) for g in sampled_parents])
+    parents, scores = zip(*[(g.genome, g.loss) for g in sampled_parents])
     sys = SYS_PROMPT
     parent_block = json.dumps(
         [{"genome":g, "score":s} for g,s in zip(parents,scores)],
@@ -133,3 +197,9 @@ def describe() -> str:
 
 # def crossover_guiline() -> str:
 #     return "The crossover operator for the TSP is a simple one: two parent routes are combined to create a new child route. The child route is constructed by alternating the cities of the two parent routes, with a random number of cities from each parent included in the child. The resulting child route is then checked for validity and returned."
+
+def create_fallback_genome():
+    """创建一个简单的顺序路径作为fallback"""
+    fallback_path = list(range(CITY_NUM))
+    fallback_loss = eval(fallback_path)
+    return fallback_path, fallback_loss

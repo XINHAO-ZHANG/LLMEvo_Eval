@@ -89,7 +89,24 @@ def run_evolve(cfg,
     if enable_zero_shot:
         print(f"\n{'='*20} Zero-shot Evaluation {'='*20}")
         
-        # 构造评估用的prompt
+        # 构造评估用的prompt        # 在 run_evolve 函数中
+        if enable_zero_shot:
+            
+            # 使用带种子的prompt函数
+            def seeded_prompt_func(seed=None, temperature_index=None, call_index=None):
+                return task_mod.get_zero_shot_prompt(seed=seed, 
+                                                   temperature_index=temperature_index, 
+                                                   call_index=call_index)
+            
+            # 评估zero-shot能力，使用实验种子确保可重现性
+            zero_shot_results = evaluate_zero_shot(
+                prompt_func=seeded_prompt_func,  # 修改：使用 prompt_func 而不是 prompt
+                model=model_name,
+                task=task_mod,
+                trials_per_temp=2,
+                temp_step=0.2,
+                base_seed=seed
+            )
         eval_prompt = task_mod.get_zero_shot_prompt()  
         
         # 评估zero-shot能力
@@ -102,7 +119,11 @@ def run_evolve(cfg,
         )
         
         # 计算整体zero-shot能力分数（所有temperature下mean的平均值）
-        zero_shot_score = np.mean([metrics['mean'] for metrics in zero_shot_results.values()])
+        means = [metrics['mean'] for metrics in zero_shot_results.values() if not np.isnan(metrics['mean'])]
+        if means:
+            zero_shot_score = np.mean(means)
+        else:
+            zero_shot_score = float('nan')
         zero_shot_best = min(zero_shot_results.items(), key=lambda x: x[1]['mean'])[0]
         
         print("\nZero-shot performance across temperatures:")
@@ -151,6 +172,7 @@ def run_evolve(cfg,
         gen_idx += 1
         # 对于每个子代单独调用 LLM
         child_genomes = []
+        child_lineage = []  # 新增：记录每个子代的父代
         for _ in range(n_child):
             sampled_parents = db.sample(n_parent)
             prompt = task_mod.get_evolve_prompt(sampled_parents)
@@ -180,6 +202,8 @@ def run_evolve(cfg,
                 continue
             stats.tok += resp.get("usage", {}).get("total_tokens", 0)
             child_genomes.append(genome)
+            # 记录父代
+            child_lineage.append([p.genome for p in sampled_parents])
         # 可选修复
         if hasattr(task_mod, "repair"):
             raw_genomes = [g.genome for g in child_genomes]
@@ -216,6 +240,7 @@ def run_evolve(cfg,
                 "child_scores": [g.loss for g in child_genomes],
                 "population": population,
                 "best_so_far": best,
+                "parent_lineage": child_lineage,
             }
         if log_callback:
             log_callback(log)

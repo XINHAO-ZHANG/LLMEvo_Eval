@@ -22,6 +22,8 @@ from typing import Dict, Any, List, Union
 import requests
 from openai import OpenAI, AzureOpenAI
 import openai
+
+from cerebras.cloud.sdk import Cerebras
 from dotenv import load_dotenv
 
 # --------------------------------------------------------------------------- #
@@ -29,6 +31,12 @@ from dotenv import load_dotenv
 # --------------------------------------------------------------------------- #
 
 load_dotenv()
+
+# Cerebras Client
+cerebras_client = Cerebras(api_key=os.getenv("CEREBRAS_API_KEY"))
+
+# openrouter client
+openrouter_client = OpenAI(api_key=os.getenv("OPENROUTER_API_KEY"), base_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1"))
 
 # OpenAI Client
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"),base_url=os.getenv("OPENAI_API_URL", "https://api.openai.com"))
@@ -48,8 +56,10 @@ if os.getenv("AZURE_OPENAI_ENDPOINT") and os.getenv("AZURE_OPENAI_API_KEY"):
 def _provider_from(model_name: str) -> str:
     if model_name.endswith(":azure"): return "azure"
     # Basic check for common local model names, adjust as needed
-    if model_name.startswith(("phi", "starcoder2", "llama", "mistral")):
-        return "ollama"
+    if model_name.startswith(("llama")):
+        return "cerebras"
+    if model_name.startswith(("deepseek", "qwen", "meta-llama", "x-ai", "mistralai", "minimax", "google")):
+        return "openrouter"
     return "openai"
 
 # --------------------------------------------------------------------------- #
@@ -91,6 +101,14 @@ def call_llm(
                 if not openai_client.api_key:
                      raise EnvironmentError("OPENAI_API_KEY missing or OpenAI client not initialized!")
                 return _call_openai(openai_client, prompt_or_msgs, model_name, temperature, max_tokens, seed)
+            elif prov == "cerebras":
+                if not cerebras_client:
+                    raise EnvironmentError("Cerebras OpenAI environment variables missing or Cerebras client not initialized!")
+                return _call_cerebras(cerebras_client, prompt_or_msgs, model_name, temperature, max_tokens, seed)
+            elif prov == "openrouter":
+                if not openrouter_client:
+                    raise EnvironmentError("OpenRouter environment variables missing or OpenRouter client not initialized!")
+                return _call_openrouter(openrouter_client, prompt_or_msgs, model_name, temperature, max_tokens, seed)
             elif prov == "azure":
                 if not azure_client:
                     raise EnvironmentError("Azure OpenAI environment variables missing or Azure client not initialized!")
@@ -120,6 +138,42 @@ def call_llm(
         "error": str(last_error),
         "usage": {"total_tokens": 0}
     }
+
+# ────────────────────────────────────────────────────────────────────────────
+#  OpenRouter
+# ────────────────────────────────────────────────────────────────────────────
+def _call_openrouter(client: OpenAI, prompt, model, temperature, max_tokens, seed):
+    kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens)
+    if seed is not None:
+        kwargs["seed"] = seed
+
+    messages = prompt if isinstance(prompt, list) else [{"role": "user", "content": prompt}]
+
+    resp = client.chat.completions.create(messages=messages, **kwargs)
+    content = resp.choices[0].message.content
+    usage = resp.usage.to_dict() if resp.usage else None
+
+    data = {"text": content}
+    data["usage"] = usage or {"total_tokens": 0}
+    return data
+
+# ────────────────────────────────────────────────────────────────────────────
+#   cerebras
+# ────────────────────────────────────────────────────────────────────────────
+def _call_cerebras(client: Cerebras, prompt, model, temperature, max_tokens, seed):
+    kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens)
+    if seed is not None:
+        kwargs["seed"] = seed
+
+    messages = prompt if isinstance(prompt, list) else [{"role": "user", "content": prompt}]
+
+    resp = client.chat.completions.create(messages=messages, **kwargs)
+    content = resp.choices[0].message.content
+    usage = resp.usage.to_dict() if resp.usage else None
+
+    data = {"text": content}
+    data["usage"] = usage or {"total_tokens": 0}
+    return data
 
 
 # ────────────────────────────────────────────────────────────────────────────

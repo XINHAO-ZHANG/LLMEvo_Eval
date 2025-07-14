@@ -1,7 +1,10 @@
 # no csv files
 *.csv
 
-nohup.out
+# no logs
+logs/
+*.sh
+*.out
 wandb/
 runs/
 results/

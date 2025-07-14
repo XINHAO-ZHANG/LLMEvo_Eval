@@ -80,15 +80,28 @@ def make_wandb_callback(project: str, cfg: dict):
         gen_idx = log["gen"]
         pop = log.get("population", [])
         parent_rows = [
-            {"generation": gen_idx, "genome": json.dumps(p["genome"]), "score": p["score"], "type": "parent"}
+            {
+                "generation": gen_idx,
+                "genome": json.dumps(p["genome"]),
+                "score": p["score"],
+                "type": "parent",
+                "parents": ""
+            }
             for p in pop
         ]
 
         children = log.get("children", [])
         child_scores = log.get("child_scores", [])
+        parent_lineage = log.get("parent_lineage", [])
         child_rows = [
-            {"generation": gen_idx, "genome": json.dumps(g), "score": s, "type": "child"}
-            for g, s in zip(children, child_scores)
+            {
+                "generation": gen_idx,
+                "genome": json.dumps(g),
+                "score": s,
+                "type": "child",
+                "parents": json.dumps(parent_lineage[i]) if i < len(parent_lineage) else ""
+            }
+            for i, (g, s) in enumerate(zip(children, child_scores))
         ]
 
         all_rows = parent_rows + child_rows
