@@ -1,2 +1,0 @@
-Problem Name: 1_Square_matrix_multiplication_
-compiled=True correctness=True metadata={'hardware': 'NVIDIA A100 80GB PCIe', 'device': '0', 'correctness_trials': '(5 / 5)'} runtime=5.48 runtime_stats={'mean': 5.48, 'std': 0.087, 'min': 5.46, 'max': 6.34, 'num_trials': 100}
