@@ -144,7 +144,11 @@ def parse_response(resp):
     # 5. 兜底
     return {"genome": None, "text": content, "usage": resp.get("usage", {"total_tokens": 0})}
 
-def get_zero_shot_prompt():
+def get_zero_shot_prompt(seed=None, temperature_index=None, call_index=None):
+    """
+    生成TSP任务的zero-shot prompt
+    参数 seed, temperature_index, call_index 为了兼容接口，实际不使用
+    """
     sys = SYS_PROMPT
     ques_block = json.dumps({"distance_matrix": DIST.tolist()}, ensure_ascii=False, indent=2)
     user = dedent(

@@ -6,6 +6,7 @@ import time, random, json, uuid
 from pathlib import Path
 from typing import List, Callable, Any
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from evolve_core.db import get_db, Genome
 from evolve_core.executor import batch_eval
@@ -35,6 +36,58 @@ class RunStats:
     def dump(self):
         return self.__dict__
 
+
+def _generate_single_child(db, task_mod, model_name, n_parent, rng, stats):
+    """生成单个子代，包含LLM调用和评估，用于并行执行"""
+    try:
+        sampled_parents = db.sample(n_parent)
+        prompt = task_mod.get_evolve_prompt(sampled_parents)
+        
+        resp = call_llm(
+            prompt,
+            model=model_name,
+            max_tokens=4096,
+            seed=rng.randint(0, 2**30)
+        )
+        
+        parsed_resp = task_mod.parse_response(resp)  # 返回字典 {"genome": ...}
+        raw_genome = parsed_resp["genome"]
+        
+        # 计算损失值
+        eval_result = task_mod.eval(raw_genome)
+        
+        # 处理eval可能返回元组的情况(loss, extra_info)
+        if isinstance(eval_result, tuple):
+            loss = eval_result[0]
+            extra_info = eval_result[1] if len(eval_result) > 1 else ""
+            genome = Genome(genome=raw_genome, loss=loss, extra={"feedback": extra_info})
+        else:
+            loss = eval_result
+            genome = Genome(genome=raw_genome, loss=loss, extra={})
+        
+        # 计算token使用量
+        token_usage = resp.get("usage", {}).get("total_tokens", 0)
+        
+        # 记录父代信息
+        parent_lineage = [p.genome for p in sampled_parents]
+        
+        return {
+            "success": True,
+            "genome": genome,
+            "token_usage": token_usage,
+            "parent_lineage": parent_lineage
+        }
+        
+    except Exception as e:
+        print(f"Error generating child: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "token_usage": 0,
+            "parent_lineage": []
+        }
+
+
 def _snapshot_population(db):
     """Return current population as list[{genome, score}] (after truncation)."""
     if hasattr(db, "pool"):  # SimplePoolDB
@@ -61,7 +114,8 @@ def run_evolve(cfg,
                db_mode: str = "simple",
                db_kwargs: dict | None = None,
                out_dir: Path | None = None,
-               log_callback: LogCallback | None = None) -> RunStats:
+               log_callback: LogCallback | None = None,
+               max_workers: int | None = None) -> RunStats:
 
     rng = random.Random(seed)
     out_dir = out_dir or Path(f"runs/{model_name}_{task_mod.__name__}_{seed}_{int(time.time())}")
@@ -107,16 +161,7 @@ def run_evolve(cfg,
                 temp_step=0.2,
                 base_seed=seed
             )
-        eval_prompt = task_mod.get_zero_shot_prompt()  
-        
-        # 评估zero-shot能力
-        zero_shot_results = evaluate_zero_shot(
-            prompt=eval_prompt,
-            model=model_name,
-            task=task_mod,
-            trials_per_temp=2,  # 每个temperature测试2次
-            temp_step=0.2,      # temperature从0到1，步长0.2
-        )
+            print(f"Zero-shot evaluation completed with {len(zero_shot_results)} temperatures.")
         
         # 计算整体zero-shot能力分数（所有temperature下mean的平均值）
         means = [metrics['mean'] for metrics in zero_shot_results.values() if not np.isnan(metrics['mean'])]
@@ -161,6 +206,7 @@ def run_evolve(cfg,
     # -------- log generation 0 (seed only) --------
     pop0 = _snapshot_population(db)
     best0 = db.get_best()
+    print(f"Initial population size: {len(pop0)}, Best score: {best0}")
     stats.record(best0)
     seed_log = {"uuid": f"{model_name}_{task_mod.__name__}_{seed}_np{n_parent}_nc{n_child}_b{budget_calls}","gen": 0, "best_so_far": best0, "children":[],"child_scores": [0], "population": pop0}
     if log_callback: log_callback(seed_log)
@@ -170,56 +216,58 @@ def run_evolve(cfg,
     gen_idx = 0
     while stats.calls < budget_calls:
         gen_idx += 1
-        # 对于每个子代单独调用 LLM
+        
+        # ====== 并行子代生成 ======
+        print(f"Generation {gen_idx}: Starting parallel generation of {n_child} children...")
+        
         child_genomes = []
-        child_lineage = []  # 新增：记录每个子代的父代
-        for _ in range(n_child):
-            sampled_parents = db.sample(n_parent)
-            prompt = task_mod.get_evolve_prompt(sampled_parents)
-            try:
-                resp = call_llm(
-                    prompt,
-                    model=model_name,
-                    max_tokens=4096,
-                    seed=rng.randint(0, 2**30)
-                )
-                parsed_resp = task_mod.parse_response(resp)  # 返回字典 {"genome": ...}
-                raw_genome = parsed_resp["genome"]
-                # 计算损失值
-                eval_result = task_mod.eval(raw_genome)
-                # 处理eval可能返回元组的情况(loss, extra_info)
-                if isinstance(eval_result, tuple):
-                    loss = eval_result[0]
-                    extra_info = eval_result[1] if len(eval_result) > 1 else ""
-                    genome = Genome(genome=raw_genome, loss=loss, extra={"feedback": extra_info})
+        child_lineage = []
+        
+        # 使用线程池并行生成子代
+        max_workers = min(n_child, 4)  # 限制并发数避免API限流
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有子代生成任务
+            future_to_index = {}
+            for i in range(n_child):
+                future = executor.submit(_generate_single_child, db, task_mod, model_name, n_parent, rng, stats)
+                future_to_index[future] = i
+            
+            # 收集结果
+            for future in as_completed(future_to_index):
+                result = future.result()
+                
+                if result["success"]:
+                    child_genomes.append(result["genome"])
+                    child_lineage.append(result["parent_lineage"])
+                    stats.tok += result["token_usage"]
+                    stats.calls += 1
                 else:
-                    loss = eval_result
-                    genome = Genome(genome=raw_genome, loss=loss, extra={})
-                stats.calls += 1
-            except Exception as e:
-                print(f"Error: {e}")
-                stats.calls += 1
-                continue
-            stats.tok += resp.get("usage", {}).get("total_tokens", 0)
-            child_genomes.append(genome)
-            # 记录父代
-            child_lineage.append([p.genome for p in sampled_parents])
-        # 可选修复
-        if hasattr(task_mod, "repair"):
+                    # 处理失败的情况
+                    print(f"Child generation failed: {result.get('error', 'Unknown error')}")
+                    stats.calls += 1
+        
+        print(f"Generated {len(child_genomes)} children successfully.")
+        
+        # 可选修复（如果支持的话，也可以并行化）
+        if hasattr(task_mod, "repair") and child_genomes:
+            print("Applying repair function...")
             raw_genomes = [g.genome for g in child_genomes]
             repaired_genomes = task_mod.repair(raw_genomes)
-            # 重新创建Genome对象
-            new_child_genomes = []
-            for g in repaired_genomes:
-                eval_result = task_mod.eval(g)
+            
+            # 并行重新评估修复后的基因组
+            def _eval_repaired_genome(genome):
+                eval_result = task_mod.eval(genome)
                 if isinstance(eval_result, tuple):
                     loss = eval_result[0]
                     extra_info = eval_result[1] if len(eval_result) > 1 else ""
-                    new_child_genomes.append(Genome(genome=g, loss=loss, extra={"feedback": extra_info}))
+                    return Genome(genome=genome, loss=loss, extra={"feedback": extra_info})
                 else:
                     loss = eval_result
-                    new_child_genomes.append(Genome(genome=g, loss=loss, extra={}))
-            child_genomes = new_child_genomes
+                    return Genome(genome=genome, loss=loss, extra={})
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                child_genomes = list(executor.map(_eval_repaired_genome, repaired_genomes))
         
         db.add(child_genomes)
 

@@ -6,6 +6,7 @@ Genome = str (prompt).  Fitness = 1 - accuracy on a fixed eval set.
 
 from __future__ import annotations
 
+import hashlib
 import random
 from typing import List, Any, Dict
 from tqdm import tqdm
@@ -21,6 +22,14 @@ DEFAULT_EVAL_SET = "test"  # "test" or "valid"
 
 # 全局变量，存储当前任务类型
 CURRENT_TASK = DEFAULT_EVAL_TASK
+
+# 全局评估缓存：prompt_hash -> (loss, metadata)
+_EVAL_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+
+def _prompt_hash(prompt: str, task: str, split: str) -> str:
+    """为prompt+task+split组合生成唯一哈希值"""
+    content = f"{prompt}|{task}|{split}"
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
 def configure(cfg=None):
     """配置当前任务类型"""
@@ -175,7 +184,17 @@ def seed_pool(n: int, rng: random.Random, init_models=None, n_per_model=None, pr
 def eval(prompt: str, task=DEFAULT_EVAL_TASK, split=DEFAULT_EVAL_SET) -> float:
     """
     评估prompt在指定任务和数据集上的表现，返回loss（越小越好）。
+    使用全局缓存避免重复评估相同的prompt。
     """
+    # 检查缓存
+    cache_key = _prompt_hash(prompt, task, split)
+    if cache_key in _EVAL_CACHE:
+        cached_loss, metadata = _EVAL_CACHE[cache_key]
+        print(f"Cache hit for prompt: {prompt[:50]}... | Cached loss: {cached_loss:.6f}")
+        return cached_loss
+    
+    print(f"Cache miss - evaluating prompt: {prompt[:50]}...")
+    
     srcs, tgts_or_refs = load_eval_data(task, split)
     
     # 随机采样25条进行评测
@@ -192,20 +211,44 @@ def eval(prompt: str, task=DEFAULT_EVAL_TASK, split=DEFAULT_EVAL_SET) -> float:
         eval_tgts = tgts_or_refs
     
     preds = []
+    total_tokens = 0
     for src in tqdm(eval_srcs, desc=f"Evaluating {task} prompts using gpt-4o-mini"):
         resp = call_llm(prompt + "\n" + src, model="openai/gpt-4o-mini", max_tokens=1280)
         out = parse_response(resp)["genome"]
-        toks =parse_response(resp).get("usage", {}).get("total_tokens", 0)
+        toks = parse_response(resp).get("usage", {}).get("total_tokens", 0)
+        total_tokens += toks
         print(f"Prompt: {prompt[:50]}... | Tokens: {toks} | Response: {out[:50]}...")
         preds.append(out)
+    
+    # 计算评分
     if task == "sum":
         scores = compute_rouge(preds, eval_tgts)
-        return 1.0 - scores["rougeL"]  # 以rougeL为主
+        loss = 1.0 - scores["rougeL"]  # 以rougeL为主
+        metric_name = "rougeL"
+        metric_value = scores["rougeL"]
     elif task == "sim":
         scores = compute_sari(eval_srcs, preds, eval_tgts)
-        return 1.0 - scores["sari"] / 100.0
+        loss = 1.0 - scores["sari"] / 100.0
+        metric_name = "sari"
+        metric_value = scores["sari"]
     else:
-        return 1.0
+        loss = 1.0
+        metric_name = "unknown"
+        metric_value = 0.0
+    
+    # 缓存结果
+    metadata = {
+        "task": task,
+        "split": split,
+        "metric_name": metric_name,
+        "metric_value": metric_value,
+        "total_tokens": total_tokens,
+        "num_samples": len(eval_srcs)
+    }
+    _EVAL_CACHE[cache_key] = (loss, metadata)
+    
+    print(f"Evaluation complete | Loss: {loss:.6f} | {metric_name}: {metric_value:.4f} | Tokens: {total_tokens}")
+    return loss
 
 def repair(prompts: List[str]) -> List[str]:
     # 去重、去空
@@ -238,9 +281,10 @@ def parse_response(resp: Dict[str, Any]) -> Dict[str, Any]:
     
     return {"genome": str(resp), "usage": {"total_tokens": 0}}
 
-def get_zero_shot_prompt(task=None):
+def get_zero_shot_prompt(task=None, seed=None, temperature_index=None, call_index=None):
     """
     根据具体任务生成zero-shot prompt
+    参数 seed, temperature_index, call_index 为了兼容接口，实际不使用
     """
     task = task or CURRENT_TASK
     sys = "You are a prompt optimization expert. Your goal is to design effective prompts for language models."
@@ -319,5 +363,28 @@ Please return ONLY the new prompt text (not in a list, just the plain text that 
 
 def describe() -> str:
     return "Prompt optimization for text summarization or simplification. Genome is a prompt string. Fitness is 1 - metric (ROUGE/SARI) on a fixed eval set."
+
+def clear_eval_cache():
+    """清空评估缓存"""
+    global _EVAL_CACHE
+    cache_size = len(_EVAL_CACHE)
+    _EVAL_CACHE.clear()
+    print(f"Cleared evaluation cache ({cache_size} entries)")
+
+def get_cache_stats():
+    """获取缓存统计信息"""
+    total_entries = len(_EVAL_CACHE)
+    if total_entries == 0:
+        return {"total_entries": 0, "tasks": {}}
+    
+    stats = {"total_entries": total_entries, "tasks": {}}
+    for cache_key, (loss, metadata) in _EVAL_CACHE.items():
+        task = metadata.get("task", "unknown")
+        if task not in stats["tasks"]:
+            stats["tasks"][task] = {"count": 0, "total_tokens": 0}
+        stats["tasks"][task]["count"] += 1
+        stats["tasks"][task]["total_tokens"] += metadata.get("total_tokens", 0)
+    
+    return stats
 
 

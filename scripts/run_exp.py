@@ -53,6 +53,7 @@ def main(cfg: DictConfig):
         budget_calls=cfg.budget,
         db_mode=cfg.db_mode,
         db_kwargs={"capacity": cfg.capacity},
+        max_workers=cfg.get("max_workers", None),  # 支持并行配置
         log_callback=make_wandb_callback(project=f"EvolveEval-{cfg.task}-new", cfg=OmegaConf.to_container(cfg)),
     )
     print("✅ Stats:", stats.dump())
