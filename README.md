@@ -1,53 +1,257 @@
-# EvoEval: LLM-driven Evolutionary Optimization Evaluation Framework
+# LLMEvo: LLM-driven Evolutionary Optimization Framework
 
-## Overview
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-EvoEval is a general-purpose optimization platform that combines Large Language Models (LLMs) with evolutionary algorithms, inspired by Google DeepMind's AlphaEvolve. By leveraging LLMs to generate, mutate, and evolve candidate solutions ("genomes"), and evaluating them with task-specific fitness functions, EvoEval enables automated, intelligent search and optimization. The framework supports multiple tasks (e.g., TSP, Graph Coloring, Prompt Optimization, Code Generation) and a variety of LLM providers (OpenAI, Azure, Ollama/local, etc.).
+LLMEvo is a comprehensive framework for solving optimization problems using Large Language Models (LLMs) and evolutionary algorithms. Inspired by Google DeepMind's work, it combines the reasoning capabilities of LLMs with the search power of evolutionary algorithms to tackle complex optimization challenges.
 
----
+## 🚀 Features
 
-## Directory Structure
+- **Multi-LLM Support**: OpenAI GPT, Anthropic Claude, local Ollama models
+- **Diverse Tasks**: TSP, Bin Packing, Prompt Optimization, Symbolic Regression
+- **Modular Design**: Clean separation of concerns with pluggable components
+- **Parallel Execution**: Efficient parallel evaluation of candidates
+- **Experiment Tracking**: Built-in logging and optional W&B integration
+- **Configuration Management**: Hierarchical configuration with Hydra
+- **Zero-shot Evaluation**: Baseline performance assessment
+
+## 📦 Installation
+
+### Clone and Setup
+
+```bash
+git clone https://github.com/your-username/LLMEvo_Eval.git
+cd LLMEvo_Eval
+pip install -r requirements.txt
+```
+
+### Set up API Keys
+
+```bash
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"  # Optional
+```
+
+## 🏗️ Project Structure
 
 ```
-.
-├── tasks/           # Task definitions (TSP, Graph Coloring, PromptOpt, CodeGen, etc.)
-├── evolve_core/     # Evolutionary algorithm core (main loop, database, parallel evaluation)
-├── llm_ops/         # LLM API wrappers and prompt builders
-├── scripts/         # Experiment runner scripts and logging tools
-├── config/          # Configuration files (Hydra style, centralized)
-├── data/            # Task data (distance matrices, graph structures, etc.)
+LLMEvo_Eval/
+│
+├── README.md                          # This file
+├── requirements.txt                   # Python dependencies
+├── .gitignore                        # Git ignore rules
+│
+├── config/                           # Configuration management
+│   └── exp_grid.yaml                # Experiment configuration
+│
+├── data/                            # Datasets and benchmarks
+│   ├── tsp/                         # TSP instances
+│   ├── bin_packing/                 # Bin packing problems
+│   ├── symboreg/                    # Symbolic regression data
+│   └── promptopt/                   # Prompt optimization tasks
+│
+├── tasks/                           # Task definitions
+│   ├── base.py                      # Abstract base class
+│   ├── tsp.py                       # TSP implementation
+│   └── ...                          # Other task modules
+│
+├── evolve/                          # Evolutionary algorithm core
+│   ├── algorithm.py                 # Main evolution loop
+│   ├── population.py                # Population management
+│   └── database.py                  # Results database
+│
+├── llm/                            # LLM interface layer
+│   ├── api.py                       # Unified API interface
+│   ├── prompts.py                   # Prompt engineering
+│   └── providers/                   # Different LLM providers
+│
+├── evaluation/                     # Evaluation system
+│   ├── evaluator.py                # Base evaluator
+│   └── parallel.py                 # Parallel evaluation
+│
+├── utils/                          # Utility functions
+│   ├── logging.py                  # Logging utilities
+│   └── visualization.py            # Plotting functions
+│
+├── experiments/                    # Experiment management
+│   ├── run_experiment.py          # Main experiment runner
+│   ├── batch_runner.py            # Batch experiment execution
+│   └── analysis/                  # Result analysis scripts
+│
+├── notebooks/                      # Jupyter notebooks
+│   ├── 01_data_exploration.ipynb  # Data analysis
+│   ├── 02_algorithm_analysis.ipynb # Algorithm visualization
+│   └── templates/                  # Notebook templates
+│
+├── tests/                          # Unit tests
+│   ├── test_tasks/                 # Task tests
+│   ├── test_evolve/               # Algorithm tests
+│   └── test_llm/                  # LLM interface tests
+│
+├── scripts/                       # Utility scripts
+│   └── clean_logs.py              # Log cleanup
+│
+└── docs/                          # Documentation
+    ├── api/                       # API documentation
+    ├── tutorials/                 # Usage tutorials
+    └── examples/                  # Code examples
 ```
 
----
+## 🎯 Quick Start
 
-## Configuration & Parameter Management (Hydra + exp_grid.yaml)
+### 1. Set up API Keys
 
-- **Centralized configuration**: All experiment parameters are managed in a single `config/exp_grid.yaml`, supporting both global and task-specific structured parameters.
-- **Hydra integration**: The main entry script `scripts/run_exp.py` uses Hydra to automatically load configuration, so you don't need to pass arguments manually.
-- **Task-structured config example**:
+```bash
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"  # Optional
+```
+
+### 2. Run a Simple Experiment
+
+```bash
+# Run TSP with GPT-4
+python experiments/run_experiment.py task=tsp model=gpt-4o
+
+# Run with custom parameters
+python experiments/run_experiment.py task=tsp model=gpt-4o seed=42 budget=100
+```
+
+### 3. Batch Experiments
+
+```bash
+python experiments/batch_runner.py
+```
+
+### 4. Programmatic Usage
+
+```python
+import sys
+from pathlib import Path
+sys.path.append('.')  # Add project root to path
+
+from evolve import run_evolve
+from tasks import get_task
+
+# Load a task
+task_module = get_task("tsp")
+
+# Configure and run evolution
+results = run_evolve(
+    cfg=config,
+    task_mod=task_module,
+    model_name="gpt-4o",
+    seed=42,
+    budget_calls=100
+)
+
+print(f"Best fitness: {min(results.best_curve)}")
+```
+
+## 📊 Configuration
+
+LLMEvo uses a simple, centralized configuration file (`config/exp_grid.yaml`) that supports both global and task-specific parameters:
 
 ```yaml
-# config/exp_grid.yaml
-
+# Global default parameters
 task: tsp
-model: gpt-4o
+model: openai/gpt-4o
 seed: 0
+budget: 300
 n_init: 40
 parent_slots: 4
 child_slots: 8
-budget: 200
-capacity: 40
-init_pop_path: null
 db_mode: simple
+enable_zero_shot_eval: true
 
+# Task-specific overrides
 tasks:
   tsp:
     n_init: 60
     parent_slots: 6
     child_slots: 12
-  kernelopt:
-    n_init: 30
-    parent_slots: 3
+    max_workers: 4
+  
+  promptopt:
+    n_init: 10
+    parent_slots: 2
+    child_slots: 5
+    budget: 150
+    eval_task: sum
+    max_workers: 2
+```
+
+You can override any parameter from command line:
+
+```bash
+python experiments/run_experiment.py task=tsp model=openai/gpt-4o budget=100 seed=42
+```
+
+## 🔧 Adding New Tasks
+
+1. **Create task module** in `tasks/`:
+
+```python
+from tasks.base import BaseTask
+
+class MyTask(BaseTask):
+    def init(self, n_population, rng):
+        # Generate initial population
+        pass
+    
+    def eval(self, genome):
+        # Evaluate genome fitness
+        pass
+    
+    def get_evolve_prompt(self, parents):
+        # Generate evolution prompt
+        pass
+    
+    def get_zero_shot_prompt(self):
+        # Generate zero-shot prompt
+        pass
+```
+
+2. **Add configuration** in `config/exp_grid.yaml`
+
+3. **Register task** in `tasks/__init__.py`
+
+## 📈 Experiment Analysis
+
+Use the provided Jupyter notebooks for analysis:
+
+- **Data Exploration**: `notebooks/01_data_exploration.ipynb`
+- **Algorithm Analysis**: `notebooks/02_algorithm_analysis.ipynb`
+- **Results Visualization**: `notebooks/03_results_visualization.ipynb`
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Inspired by Google DeepMind's evolutionary optimization research
+- Built with Hydra for configuration management
+- Uses OpenAI and Anthropic APIs for LLM integration
+
+## 📚 Citation
+
+If you use LLMEvo in your research, please cite:
+
+```bibtex
+@software{llmevo2024,
+  title={LLMEvo: LLM-driven Evolutionary Optimization Framework},
+  author={Zhang, Xin},
+  year={2024},
+  url={https://github.com/your-username/LLMEvo_Eval}
+}
+```
     child_slots: 6
   gcolor:
     n_init: 50

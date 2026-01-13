@@ -8,11 +8,11 @@ from typing import List, Callable, Any
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from evolve_core.db import get_db, Genome
-from evolve_core.executor import batch_eval
-from llm_ops.api import call_llm
-from llm_ops.prompt import build_evolve_prompt   # adjust if located elsewhere
-from llm_ops.zero_shot_eval import evaluate_zero_shot
+from evolve.db import get_db, Genome
+from evolve.executor import batch_eval
+from llm.api import call_llm
+from llm.prompts import build_evolve_prompt
+from llm.zero_shot_eval import evaluate_zero_shot
 
 
 LogCallback = Callable[[dict[str, Any]], None]
