@@ -35,12 +35,18 @@ def eval(code_str, split="train") -> float:
     try:
         local_env = {}
         exec(code_str, {"np": np}, local_env)
-        equation = local_env["equation"]
+        equation = local_env.get("equation")  # 使用get方法避免KeyError
+        
+        if equation is None:
+            return 1e6  # 返回高损失而不是None
+            
         y_pred = equation(X[:,0], X[:,1])
+        if np.any(np.isnan(y_pred)) or np.any(np.isinf(y_pred)):
+            return 1e6
         mse = np.mean((y_pred - y_true) ** 2)
-        return mse
+        return float(mse)  # 确保返回float类型
     except Exception:
-        pass
+        return 1e6  # 返回高损失而不是None
 
 def eval_tout(genome):
     return {split: eval(genome, split) for split in ["train", "test_id", "test_ood"]}

@@ -32,6 +32,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# HuggingFace Client
+
+huggingface_client = None
+if os.getenv("HUGGINGFACEHUB_API_TOKEN"):
+    huggingface_client = OpenAI(api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"), base_url=os.getenv("HUGGINGFACEHUB_API_URL", "https://router.huggingface.co/v1"))
 # Cerebras Client
 cerebras_client = Cerebras(api_key=os.getenv("CEREBRAS_API_KEY"))
 
@@ -56,9 +61,9 @@ if os.getenv("AZURE_OPENAI_ENDPOINT") and os.getenv("AZURE_OPENAI_API_KEY"):
 def _provider_from(model_name: str) -> str:
     if model_name.endswith(":azure"): return "azure"
     # Basic check for common local model names, adjust as needed
-    if model_name.startswith(("llama")):
-        return "cerebras"
-    if model_name.startswith(("deepseek", "qwen", "meta-llama", "x-ai", "mistralai", "minimax", "google")):
+    if model_name.startswith(("Qwen","IDinsight")) or model_name.endswith(":cerebras"):
+        return "huggingface"
+    if model_name.startswith(("deepseek", "meta-llama", "x-ai", "mistralai", "minimax", "google")):
         return "openrouter"
     return "openai"
 
@@ -101,6 +106,10 @@ def call_llm(
                 if not openai_client.api_key:
                      raise EnvironmentError("OPENAI_API_KEY missing or OpenAI client not initialized!")
                 return _call_openai(openai_client, prompt_or_msgs, model_name, temperature, max_tokens, seed)
+            elif prov == "huggingface":
+                if not huggingface_client:
+                    raise EnvironmentError("HuggingFace environment variables missing or HuggingFace client not initialized!")
+                return _call_huggingface(huggingface_client, prompt_or_msgs, model_name, temperature, max_tokens, seed)
             elif prov == "cerebras":
                 if not cerebras_client:
                     raise EnvironmentError("Cerebras OpenAI environment variables missing or Cerebras client not initialized!")
@@ -175,6 +184,23 @@ def _call_cerebras(client: Cerebras, prompt, model, temperature, max_tokens, see
     data["usage"] = usage or {"total_tokens": 0}
     return data
 
+# ────────────────────────────────────────────────────────────────────────────
+#  HF Models
+# ────────────────────────────────────────────────────────────────────────────
+def _call_huggingface(client: HuggingFace, prompt, model, temperature, max_tokens, seed):
+    kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens)
+    if seed is not None:
+        kwargs["seed"] = seed
+
+    messages = prompt if isinstance(prompt, list) else [{"role": "user", "content": prompt}]
+
+    resp = client.chat.completions.create(messages=messages, **kwargs)
+    content = resp.choices[0].message.content
+    usage = resp.usage.to_dict() if resp.usage else None
+
+    data = {"text": content}
+    data["usage"] = usage or {"total_tokens": 0}
+    return data
 
 # ────────────────────────────────────────────────────────────────────────────
 #  OpenAI

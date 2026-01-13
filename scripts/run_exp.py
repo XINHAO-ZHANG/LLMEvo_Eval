@@ -39,6 +39,11 @@ def main(cfg: DictConfig):
     print("============================\n")
 
     task_mod = load_task(cfg.task)
+    
+    # 配置任务模块
+    if hasattr(task_mod, 'configure'):
+        task_mod.configure(cfg)
+    
     safe_model_name = cfg.model.replace("/", "_")
 
     stats = run_evolve(

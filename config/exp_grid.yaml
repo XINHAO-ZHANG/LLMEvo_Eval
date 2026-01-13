@@ -102,5 +102,13 @@ tasks:
   symboreg_oscillator2:
     seed: 21
     max_workers: 4
+  bin_packing:
+    n_init: 7
+    parent_slots: 2
+    child_slots: 10
+    max_workers: 4
+    seed: 42
+    dataset_type: or3  # or 'weibull'
+
     # 其他可选参数
 

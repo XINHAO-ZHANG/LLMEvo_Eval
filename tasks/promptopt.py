@@ -6,6 +6,8 @@ Genome = str (prompt).  Fitness = 1 - accuracy on a fixed eval set.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 import hashlib
 import random
 from typing import List, Any, Dict
@@ -19,6 +21,7 @@ DEFAULT_INIT_MODELS = ["openai/gpt-3.5-turbo", "openai/gpt-4o"]
 DEFAULT_N_INIT_PER_MODEL = 3
 DEFAULT_EVAL_TASK = "sum"  # "sum" for summarization, "sim" for simplification
 DEFAULT_EVAL_SET = "test"  # "test" or "valid"
+PROJECT_ROOT = Path(__file__).parent.parent
 
 # 全局变量，存储当前任务类型
 CURRENT_TASK = DEFAULT_EVAL_TASK
@@ -34,16 +37,29 @@ def _prompt_hash(prompt: str, task: str, split: str) -> str:
 def configure(cfg=None):
     """配置当前任务类型"""
     global CURRENT_TASK
-    if cfg and hasattr(cfg, 'task_type'):
-        CURRENT_TASK = cfg.task_type
-    print(f"PromptOpt configured with task: {CURRENT_TASK}")
+    print(f"[DEBUG] configure() called with cfg type: {type(cfg)}")
+    
+    if cfg is not None:
+        # 处理 Hydra 配置对象
+        if hasattr(cfg, 'tasks') and hasattr(cfg.tasks, 'promptopt'):
+            if hasattr(cfg.tasks.promptopt, 'eval_task'):
+                CURRENT_TASK = cfg.tasks.promptopt.eval_task
+                print(f"PromptOpt configured with task: {CURRENT_TASK} (from cfg.tasks.promptopt.eval_task)")
+                return
+        
+        # 尝试直接访问 eval_task
+        if hasattr(cfg, 'eval_task'):
+            CURRENT_TASK = cfg.eval_task
+            print(f"PromptOpt configured with task: {CURRENT_TASK} (from cfg.eval_task)")
+            return
+            
+        print(f"[DEBUG] Could not find eval_task in config, using default")
+    
+    print(f"PromptOpt configured with default task: {CURRENT_TASK}")
 
 # ========== 数据集加载 ==========
-def load_eval_data(task=DEFAULT_EVAL_TASK, split=DEFAULT_EVAL_SET):
+def load_eval_data(task=CURRENT_TASK, split=DEFAULT_EVAL_SET):
     # 获取项目根目录
-    import os
-    from pathlib import Path
-    project_root = Path(__file__).parent.parent
     
     if task == "sum":
         # SAMSum - 如果请求的split不存在，使用test
@@ -51,17 +67,17 @@ def load_eval_data(task=DEFAULT_EVAL_TASK, split=DEFAULT_EVAL_SET):
         if split not in available_splits:
             print(f"Warning: Split '{split}' not found for sum task, using 'test' instead")
             split = "test"
-            
-        src_path = project_root / "data" / "promptopt" / "sum" / "sam" / f"{split}.src"
-        tgt_path = project_root / "data" / "promptopt" / "sum" / "sam" / f"{split}.tgt"
-        
+
+        src_path = PROJECT_ROOT / "data" / "promptopt" / "sum" / "sam" / f"{split}.src"
+        tgt_path = PROJECT_ROOT / "data" / "promptopt" / "sum" / "sam" / f"{split}.tgt"
+
         # 检查文件是否存在
         if not src_path.exists() or not tgt_path.exists():
             print(f"Warning: Files for split '{split}' not found, using 'test' instead")
             split = "test"
-            src_path = project_root / "data" / "promptopt" / "sum" / "sam" / f"{split}.src"
-            tgt_path = project_root / "data" / "promptopt" / "sum" / "sam" / f"{split}.tgt"
-        
+            src_path = PROJECT_ROOT / "data" / "promptopt" / "sum" / "sam" / f"{split}.src"
+            tgt_path = PROJECT_ROOT / "data" / "promptopt" / "sum" / "sam" / f"{split}.tgt"
+
         with open(src_path) as fsrc, open(tgt_path) as ftgt:
             srcs = [l.strip() for l in fsrc]
             tgts = [l.strip() for l in ftgt]
@@ -77,23 +93,29 @@ def load_eval_data(task=DEFAULT_EVAL_TASK, split=DEFAULT_EVAL_SET):
         # 将valid映射到dev
         if split == "valid":
             split = "dev"
-            
-        src_path = project_root / "data" / "promptopt" / "sim" / "asset" / split / f"asset.{split}.src"
-        
+
+        src_path = PROJECT_ROOT / "data" / "promptopt" / "sim" / "asset" / split / f"asset.{split}.src"
+        tgt_path = PROJECT_ROOT / "data" / "promptopt" / "sim" / "asset" / split / f"asset.{split}.tgt"
+
         # 检查文件是否存在
-        if not src_path.exists():
+        if not src_path.exists() or not tgt_path.exists():
             print(f"Warning: Files for split '{split}' not found, using 'test' instead")
             split = "test"
-            src_path = project_root / "data" / "promptopt" / "sim" / "asset" / split / f"asset.{split}.src"
+            src_path = PROJECT_ROOT / "data" / "promptopt" / "sim" / "asset" / split / f"asset.{split}.src"
+            tgt_path = PROJECT_ROOT / "data" / "promptopt" / "sim" / "asset" / split / f"asset.{split}.tgt"
+
+        # 读取源文件
+        with open(src_path) as f:
+            srcs = [l.strip() for l in f]
         
-        refs = []
-        for i in range(10):
-            ref_path = project_root / "data" / "promptopt" / "sim" / "asset" / split / f"asset.{split}.simp.{i}"
-            with open(ref_path) as f:
-                refs.append([l.strip() for l in f])
-        srcs = [l.strip() for l in open(src_path)]
-        # refs: list[list[str]] -> 转置为 list of list of refs
-        refs = list(map(list, zip(*refs)))
+        # 读取目标文件（tab分隔的多个参考答案）
+        with open(tgt_path) as f:
+            refs = []
+            for line in f:
+                # 每行用tab分隔的多个参考答案
+                ref_list = [ref.strip() for ref in line.strip().split('\t')]
+                refs.append(ref_list)
+        
         return srcs, refs
     else:
         raise ValueError(f"Unknown eval task: {task}")
@@ -106,17 +128,24 @@ def seed_pool(n: int, rng: random.Random, init_models=None, n_per_model=None, pr
     """
     prompt_task = prompt_task or DEFAULT_EVAL_TASK
     eval_set = eval_set or DEFAULT_EVAL_SET
+
+    # 如果是sim任务，清空相关缓存以确保重新评估
+    if prompt_task == "sim":
+        cache_keys_to_remove = []
+        for cache_key in _EVAL_CACHE.keys():
+            if "sim" in cache_key:
+                cache_keys_to_remove.append(cache_key)
+        for key in cache_keys_to_remove:
+            del _EVAL_CACHE[key]
+        if cache_keys_to_remove:
+            print(f"Cleared {len(cache_keys_to_remove)} cached sim evaluations")
     
-    # 获取项目根目录
-    import os
-    from pathlib import Path
-    project_root = Path(__file__).parent.parent
-    
+
     # 根据任务类型加载对应的prompts.txt
     if prompt_task == "sum":
-        prompts_path = project_root / "data" / "promptopt" / "sum" / "sam" / "prompts.txt"
+        prompts_path = PROJECT_ROOT / "data" / "promptopt" / "sum" / "sam" / "prompts.txt"
     elif prompt_task == "sim":
-        prompts_path = project_root / "data" / "promptopt" / "sim" / "asset" / "prompts.txt"
+        prompts_path = PROJECT_ROOT / "data" / "promptopt" / "sim" / "asset" / "prompts.txt"
     else:
         raise ValueError(f"Unknown prompt task: {prompt_task}")
     
@@ -181,7 +210,7 @@ def seed_pool(n: int, rng: random.Random, init_models=None, n_per_model=None, pr
     
     return genomes
 
-def eval(prompt: str, task=DEFAULT_EVAL_TASK, split=DEFAULT_EVAL_SET) -> float:
+def eval(prompt: str, task=CURRENT_TASK, split=DEFAULT_EVAL_SET) -> float:
     """
     评估prompt在指定任务和数据集上的表现，返回loss（越小越好）。
     使用全局缓存避免重复评估相同的prompt。
@@ -226,12 +255,15 @@ def eval(prompt: str, task=DEFAULT_EVAL_TASK, split=DEFAULT_EVAL_SET) -> float:
         loss = 1.0 - scores["rougeL"]  # 以rougeL为主
         metric_name = "rougeL"
         metric_value = scores["rougeL"]
+        print(f"ROUGE-1: {scores['rouge1']:.4f}, ROUGE-2: {scores['rouge2']:.4f}, ROUGE-L: {scores['rougeL']:.4f}")
     elif task == "sim":
         scores = compute_sari(eval_srcs, preds, eval_tgts)
         loss = 1.0 - scores["sari"] / 100.0
         metric_name = "sari"
         metric_value = scores["sari"]
+        print(f"SARI: {scores['sari']:.4f}")
     else:
+        print(f"Unknown task: {task}. Cannot evaluate.")
         loss = 1.0
         metric_name = "unknown"
         metric_value = 0.0

@@ -54,7 +54,27 @@ def _generate_single_child(db, task_mod, model_name, n_parent, rng, stats):
         raw_genome = parsed_resp["genome"]
         
         # 计算损失值
-        eval_result = task_mod.eval(raw_genome)
+        # 检查eval函数的参数签名，适配不同任务的eval接口
+        import inspect
+        eval_sig = inspect.signature(task_mod.eval)
+        eval_params = list(eval_sig.parameters.keys())
+        
+        if len(eval_params) == 1:
+            # 只有一个参数的eval函数
+            eval_result = task_mod.eval(raw_genome)
+        elif 'task' in eval_params:
+            # promptopt类型的任务，有task参数
+            if hasattr(task_mod, 'CURRENT_TASK'):
+                current_task = task_mod.CURRENT_TASK
+            else:
+                current_task = getattr(task_mod, 'DEFAULT_EVAL_TASK', 'sum')
+            eval_result = task_mod.eval(raw_genome, task=current_task)
+        elif 'split' in eval_params:
+            # symboreg类型的任务，有split参数
+            eval_result = task_mod.eval(raw_genome, split="train")
+        else:
+            # 其他多参数情况，使用默认调用
+            eval_result = task_mod.eval(raw_genome)
         
         # 处理eval可能返回元组的情况(loss, extra_info)
         if isinstance(eval_result, tuple):
@@ -146,11 +166,32 @@ def run_evolve(cfg,
         # 构造评估用的prompt        # 在 run_evolve 函数中
         if enable_zero_shot:
             
-            # 使用带种子的prompt函数
+            # 使用带种子的prompt函数，适配不同任务的get_zero_shot_prompt签名
             def seeded_prompt_func(seed=None, temperature_index=None, call_index=None):
-                return task_mod.get_zero_shot_prompt(seed=seed, 
-                                                   temperature_index=temperature_index, 
-                                                   call_index=call_index)
+                import inspect
+                zero_shot_sig = inspect.signature(task_mod.get_zero_shot_prompt)
+                zero_shot_params = list(zero_shot_sig.parameters.keys())
+                
+                # 根据参数个数调用不同的get_zero_shot_prompt
+                if 'task' in zero_shot_params:
+                    # promptopt类型的任务，有task参数
+                    if hasattr(task_mod, 'CURRENT_TASK'):
+                        current_task = task_mod.CURRENT_TASK
+                    else:
+                        current_task = getattr(task_mod, 'DEFAULT_EVAL_TASK', 'sum')
+                    return task_mod.get_zero_shot_prompt(
+                        task=current_task,
+                        seed=seed, 
+                        temperature_index=temperature_index, 
+                        call_index=call_index
+                    )
+                else:
+                    # 其他任务，标准签名
+                    return task_mod.get_zero_shot_prompt(
+                        seed=seed, 
+                        temperature_index=temperature_index, 
+                        call_index=call_index
+                    )
             
             # 评估zero-shot能力，使用实验种子确保可重现性
             zero_shot_results = evaluate_zero_shot(
@@ -169,7 +210,8 @@ def run_evolve(cfg,
             zero_shot_score = np.mean(means)
         else:
             zero_shot_score = float('nan')
-        zero_shot_best = min(zero_shot_results.items(), key=lambda x: x[1]['mean'])[0]
+        zero_shot_best_temp = min(zero_shot_results.items(), key=lambda x: x[1]['mean'])[0]
+        zero_shot_best = zero_shot_results[zero_shot_best_temp]['mean']
         
         print("\nZero-shot performance across temperatures:")
         print("-" * 50)
@@ -257,7 +299,28 @@ def run_evolve(cfg,
             
             # 并行重新评估修复后的基因组
             def _eval_repaired_genome(genome):
-                eval_result = task_mod.eval(genome)
+                # 检查eval函数的参数签名，适配不同任务的eval接口
+                import inspect
+                eval_sig = inspect.signature(task_mod.eval)
+                eval_params = list(eval_sig.parameters.keys())
+
+                if len(eval_params) == 1:
+                    # 只有一个参数的eval函数
+                    eval_result = task_mod.eval(genome)
+                elif 'task' in eval_params:
+                    # promptopt类型的任务，有task参数
+                    if hasattr(task_mod, 'CURRENT_TASK'):
+                        current_task = task_mod.CURRENT_TASK
+                    else:
+                        current_task = getattr(task_mod, 'DEFAULT_EVAL_TASK', 'sum')
+                    eval_result = task_mod.eval(genome, task=current_task)
+                elif 'split' in eval_params:
+                    # symboreg类型的任务，有split参数
+                    eval_result = task_mod.eval(genome, split="train")
+                else:
+                    # 其他多参数情况，使用默认调用
+                    eval_result = task_mod.eval(genome)
+                
                 if isinstance(eval_result, tuple):
                     loss = eval_result[0]
                     extra_info = eval_result[1] if len(eval_result) > 1 else ""

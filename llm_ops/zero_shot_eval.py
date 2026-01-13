@@ -65,10 +65,30 @@ def evaluate_zero_shot(
                 
                 response = call_llm(prompt, model=model, temperature=temp)
                 parsed = task.parse_response(response)
+                print(f"Parsed response: {parsed}")  # 调试输出
                 genome = parsed.get("genome", "")
                 
                 if genome:
-                    score = task.eval(genome, split="train")
+                    # 检查eval函数的参数签名，适配不同任务的eval接口
+                    import inspect
+                    eval_sig = inspect.signature(task.eval)
+                    eval_params = list(eval_sig.parameters.keys())
+                    
+                    if len(eval_params) == 1:
+                        # 只有一个参数的eval函数 (如其他任务)
+                        score = task.eval(genome)
+                    elif 'split' in eval_params:
+                        # 有split参数的eval函数 (如superglue)
+                        score = task.eval(genome, split='train')
+                    else:
+                        # 多参数的eval函数 (如promptopt)
+                        # 使用CURRENT_TASK和默认split
+                        if hasattr(task, 'CURRENT_TASK'):
+                            current_task = task.CURRENT_TASK
+                        else:
+                            current_task = getattr(task, 'DEFAULT_EVAL_TASK', 'sum')
+                        score = task.eval(genome, task=current_task)
+                    
                     if not np.isnan(score) and not np.isinf(score):
                         temp_results.append(score)
                         print(f"  Temp {temp:.1f}, Call {call_idx+1}: {score:.4f}")

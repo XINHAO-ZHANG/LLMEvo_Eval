@@ -1,15 +1,15 @@
-Given the English sentence, the simplification of the sentence is
-Simplify the English sentence.
-Simplify the text.
-Please simplify the English sentence.
-Give the simplification of the following English sentence.
-Make the given English sentence simpler.
-Given a sentence, simplify it so it can be understood by non-native English speakers.
-I want you to replace my complex sentence with simple sentence. Keep the meaning same, but make them simpler.
-Simplify the above sentence without changing meaning.
-Rewrite the input text into simpler text.
-Please provide a simpler version of the given text.
-Please make the given text more simple.
-Please make the given text more understandable by non-native English speakers and simplify it.
-Could you please simplify the given text?
-You are an expert in simplifying text. Could you please simplify the given text for me?
+Please summarize the main context.	0.572275
+How would you rephrase that in a few words?	0.596358
+Summarize the given context.	0.582417
+Read the text or listen to the dialogue carefully to understand the main idea and the key points that have been discussed.	0.582681
+Pick out the key ideas and supporting details that are relevant to the topic.	0.601230
+Use concise language to summarize the main points, avoiding any unnecessary details or repetition.	0.561381
+Check that the summary accurately reflects the original content and captures the essence of the discussion.	0.574910
+Edit the summary if necessary to ensure clarity and coherence.	0.551648
+Condense the main ideas of the passage into a brief summary.	0.612114
+Create a summary of the text by identifying the main points and key ideas, and then rephrasing them in a concise and easy-to-understand way.	0.586915
+Extract the essential information from the text and summarize it.	0.539350
+Extract the core concepts from the text and present them in a succinct summary.	0.554741
+Condense the primary information of the following text into a brief yet comprehensive summary.	0.548400
+Identify the central theme and key supporting details of the text, then summarize them.	0.595391
+Summarize the text by focusing on the main topic and omitting any extraneous information.	0.573507

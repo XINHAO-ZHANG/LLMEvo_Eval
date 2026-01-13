@@ -1,0 +1,15 @@
+Given the English sentence, the simplification of the sentence is	0.534940
+Simplify the English sentence.	0.549822
+Simplify the text.	0.545261
+Please simplify the English sentence.	0.522730
+Give the simplification of the following English sentence.	0.560154
+Make the given English sentence simpler.	0.516155
+Given a sentence, simplify it so it can be understood by non-native English speakers.	0.537026
+I want you to replace my complex sentence with simple sentence. Keep the meaning same, but make them simpler.	0.501186
+Simplify the above sentence without changing meaning.	0.544893
+Rewrite the input text into simpler text.	0.539704
+Please provide a simpler version of the given text.	0.522214
+Please make the given text more simple.	0.535710
+Please make the given text more understandable by non-native English speakers and simplify it.	0.561069
+Could you please simplify the given text?	0.540649
+You are an expert in simplifying text. Could you please simplify the given text for me?	0.524223
