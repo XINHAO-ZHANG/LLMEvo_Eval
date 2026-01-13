@@ -29,15 +29,6 @@ def build_distance_matrix(coords: np.ndarray) -> np.ndarray:
 
 
 # --------------------------------------------------------------------------- #
-# Graph-coloring utilities
-# --------------------------------------------------------------------------- #
-def random_graph(n: int, p: float, seed: int) -> List[Tuple[int, int]]:
-    rng = random.Random(seed)
-    edges = [(i, j) for i in range(n) for j in range(i + 1, n) if rng.random() < p]
-    return edges
-
-
-# --------------------------------------------------------------------------- #
 # Text Evaluation Metrics (ROUGE, SARI)
 # --------------------------------------------------------------------------- #
 
