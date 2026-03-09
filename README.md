@@ -1,6 +1,6 @@
 # LLMEvo: LLM-driven Evolutionary Optimization Framework
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 LLMEvo is a comprehensive framework for solving optimization problems using Large Language Models (LLMs) and evolutionary algorithms. Inspired by Google DeepMind's work, it combines the reasoning capabilities of LLMs with the search power of evolutionary algorithms to tackle complex optimization challenges.
@@ -17,13 +17,26 @@ LLMEvo is a comprehensive framework for solving optimization problems using Larg
 
 ## 📦 Installation
 
+本项目使用 [uv](https://docs.astral.sh/uv/) 管理 Python 依赖。请先安装 uv：
+
+```bash
+# 安装 uv (可选：用 pip 安装)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# 或: pip install uv
+```
+
 ### Clone and Setup
 
 ```bash
 git clone https://github.com/your-username/LLMEvo_Eval.git
 cd LLMEvo_Eval
-pip install -r requirements.txt
+uv sync
 ```
+
+- `uv sync` 会创建虚拟环境 `.venv` 并根据 `uv.lock` 安装所有依赖。
+- 运行项目时使用 `uv run python ...` 或在激活 `.venv` 后使用 `python ...`。
+- 仅安装生产依赖（不含 dev）：`uv sync --no-dev`。
+- 导出 requirements.txt（用于兼容）：`uv export --no-dev --no-hashes > requirements.txt`。
 
 ### Set up API Keys
 
@@ -38,8 +51,10 @@ export ANTHROPIC_API_KEY="your-anthropic-key"  # Optional
 LLMEvo_Eval/
 │
 ├── README.md                          # This file
-├── requirements.txt                   # Python dependencies
-├── .gitignore                        # Git ignore rules
+├── pyproject.toml                     # 项目配置与依赖 (uv)
+├── uv.lock                            # 依赖锁定文件
+├── .python-version                    # Python 版本 (3.12)
+├── .gitignore                         # Git ignore rules
 │
 ├── config/                           # Configuration management
 │   └── exp_grid.yaml                # Experiment configuration
@@ -109,10 +124,11 @@ export ANTHROPIC_API_KEY="your-anthropic-key"  # Optional
 ### 2. Run a Simple Experiment
 
 ```bash
-# Run TSP with GPT-4
-python experiments/run_experiment.py task=tsp model=gpt-4o
+# 使用 uv 运行（推荐，自动使用 .venv）
+uv run python experiments/run_experiment.py task=tsp model=gpt-4o
 
-# Run with custom parameters
+# 或先激活虚拟环境再运行
+source .venv/bin/activate  # Linux/macOS
 python experiments/run_experiment.py task=tsp model=gpt-4o seed=42 budget=100
 ```
 
@@ -330,12 +346,11 @@ python scripts/run_exp.py task=tsp model=openai/gpt-4o n_init=40 parent_slots=20
 
 ## Installation
 
-- Python 3.8+
-- Main dependencies: `openai`, `requests`, `wandb`, `numpy`, `pandas`, `scikit-learn`, `pyyaml`, `dotenv`, `hydra-core`, `omegaconf`
-- Example installation:
+- Python 3.12+（由 `pyproject.toml` 与 `.python-version` 指定）
+- 依赖由 uv 管理，见 `pyproject.toml` 与 `uv.lock`。安装：
 
 ```bash
-pip install openai requests wandb numpy pandas scikit-learn pyyaml dotenv hydra-core omegaconf
+uv sync
 ```
 
 ---

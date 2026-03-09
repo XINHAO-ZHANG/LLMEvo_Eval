@@ -17,13 +17,17 @@ from __future__ import annotations
 import json
 import os
 import random
-from typing import Dict, Any, List, Union
+from typing import Any, Dict, List, Union
 
 import requests
 from openai import OpenAI, AzureOpenAI
 import openai
 
-from cerebras.cloud.sdk import Cerebras
+try:
+    from cerebras.cloud.sdk import Cerebras
+except ImportError:
+    Cerebras = None  # type: ignore[misc, assignment]
+
 from dotenv import load_dotenv
 
 # --------------------------------------------------------------------------- #
@@ -37,14 +41,18 @@ load_dotenv()
 huggingface_client = None
 if os.getenv("HUGGINGFACEHUB_API_TOKEN"):
     huggingface_client = OpenAI(api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"), base_url=os.getenv("HUGGINGFACEHUB_API_URL", "https://router.huggingface.co/v1"))
-# Cerebras Client
-cerebras_client = Cerebras(api_key=os.getenv("CEREBRAS_API_KEY"))
+# Cerebras Client (optional)
+cerebras_client = Cerebras(api_key=os.getenv("CEREBRAS_API_KEY")) if Cerebras and os.getenv("CEREBRAS_API_KEY") else None
 
-# openrouter client
-openrouter_client = OpenAI(api_key=os.getenv("OPENROUTER_API_KEY"), base_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1"))
+# OpenRouter client (optional; required for mistralai, deepseek, meta-llama, etc.)
+openrouter_client = None
+if os.getenv("OPENROUTER_API_KEY"):
+    openrouter_client = OpenAI(api_key=os.getenv("OPENROUTER_API_KEY"), base_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1"))
 
-# OpenAI Client
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"),base_url=os.getenv("OPENAI_API_URL", "https://api.openai.com"))
+# OpenAI Client (optional)
+openai_client = None
+if os.getenv("OPENAI_API_KEY"):
+    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_API_URL", "https://api.openai.com"))
 
 # Azure OpenAI Client
 azure_client = None
@@ -66,6 +74,12 @@ def _provider_from(model_name: str) -> str:
     if model_name.startswith(("deepseek", "meta-llama", "x-ai", "mistralai", "minimax", "google")):
         return "openrouter"
     return "openai"
+
+
+def get_llm_provider(model_name: str) -> str:
+    """Return the provider id for a given model name (e.g. 'openrouter', 'openai')."""
+    return _provider_from(model_name)
+
 
 # --------------------------------------------------------------------------- #
 # Main API
@@ -103,8 +117,8 @@ def call_llm(
     while retry_count <= max_retries:
         try:
             if prov == "openai":
-                if not openai_client.api_key:
-                     raise EnvironmentError("OPENAI_API_KEY missing or OpenAI client not initialized!")
+                if not openai_client:
+                    raise EnvironmentError("OPENAI_API_KEY missing or OpenAI client not initialized!")
                 return _call_openai(openai_client, prompt_or_msgs, model_name, temperature, max_tokens, seed)
             elif prov == "huggingface":
                 if not huggingface_client:
@@ -169,7 +183,7 @@ def _call_openrouter(client: OpenAI, prompt, model, temperature, max_tokens, see
 # ────────────────────────────────────────────────────────────────────────────
 #   cerebras
 # ────────────────────────────────────────────────────────────────────────────
-def _call_cerebras(client: Cerebras, prompt, model, temperature, max_tokens, seed):
+def _call_cerebras(client: Any, prompt, model, temperature, max_tokens, seed):
     kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens)
     if seed is not None:
         kwargs["seed"] = seed

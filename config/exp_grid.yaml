@@ -51,6 +51,7 @@ defaults:
 
 task: tsp
 model: openai/gpt-4o-mini
+temperature: 0.7  # LLM sampling temperature for evolution (0–2 typical)
 db_mode: simple
 parent_slots: 3
 child_slots: 10
@@ -111,4 +112,9 @@ tasks:
     dataset_type: or3  # or 'weibull'
 
     # 其他可选参数
+
+# Hydra: 不按时间戳创建新的运行目录，实验输出统一由 run_exp 指定到 outputs/{model}_{task}_temp{temp}_{seed}_{ts}
+hydra:
+  run:
+    dir: .
 

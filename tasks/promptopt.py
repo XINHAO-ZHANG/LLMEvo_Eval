@@ -12,8 +12,8 @@ import hashlib
 import random
 from typing import List, Any, Dict
 from tqdm import tqdm
-from evolve_core.db import Genome
-from llm_ops.api import call_llm
+from evolve.db import Genome
+from llm.api import call_llm
 from tasks.utils import compute_rouge, compute_sari
 
 # ========== 配置与数据集路径（可通过外部参数传入） ==========

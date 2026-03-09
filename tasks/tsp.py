@@ -10,7 +10,7 @@ import ast
 from pathlib import Path
 
 from tasks.utils import build_distance_matrix, random_points
-from evolve_core.db import Genome
+from evolve.db import Genome
 
 
 # ------------------------------ CONFIG ---------------------------------- #

@@ -37,7 +37,7 @@ class RunStats:
         return self.__dict__
 
 
-def _generate_single_child(db, task_mod, model_name, n_parent, rng, stats):
+def _generate_single_child(db, task_mod, model_name, n_parent, rng, stats, temperature: float = 0.7):
     """生成单个子代，包含LLM调用和评估，用于并行执行"""
     try:
         sampled_parents = db.sample(n_parent)
@@ -47,6 +47,7 @@ def _generate_single_child(db, task_mod, model_name, n_parent, rng, stats):
             prompt,
             model=model_name,
             max_tokens=4096,
+            temperature=temperature,
             seed=rng.randint(0, 2**30)
         )
         
@@ -135,7 +136,8 @@ def run_evolve(cfg,
                db_kwargs: dict | None = None,
                out_dir: Path | None = None,
                log_callback: LogCallback | None = None,
-               max_workers: int | None = None) -> RunStats:
+               max_workers: int | None = None,
+               temperature: float = 0.7) -> RunStats:
 
     rng = random.Random(seed)
     out_dir = out_dir or Path(f"runs/{model_name}_{task_mod.__name__}_{seed}_{int(time.time())}")
@@ -272,7 +274,7 @@ def run_evolve(cfg,
             # 提交所有子代生成任务
             future_to_index = {}
             for i in range(n_child):
-                future = executor.submit(_generate_single_child, db, task_mod, model_name, n_parent, rng, stats)
+                future = executor.submit(_generate_single_child, db, task_mod, model_name, n_parent, rng, stats, temperature)
                 future_to_index[future] = i
             
             # 收集结果

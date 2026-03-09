@@ -1,0 +1,52 @@
+task: tsp
+model: mistralai/mistral-7b-instruct-v0.3
+temperature: 1.3
+db_mode: simple
+parent_slots: 3
+child_slots: 10
+n_init: 40
+budget: 300
+seed: 21
+capacity: 40
+init_pop_path: null
+enable_zero_shot_eval: false
+max_workers: null
+tasks:
+  tsp:
+    city_num: 60
+    n_init: 40
+    parent_slots: 3
+    child_slots: 10
+    max_workers: 4
+  kernelopt:
+    n_init: 2
+    parent_slots: 1
+    child_slots: 1
+    capacity: 2
+    max_workers: 1
+  gcolor:
+    n_init: 50
+    parent_slots: 5
+    child_slots: 10
+    max_workers: 4
+  promptopt:
+    n_init: 10
+    parent_slots: 2
+    child_slots: 5
+    budget: 150
+    eval_task: sum
+    eval_set: test
+    max_workers: 2
+  symboreg_oscillator1:
+    seed: 21
+    max_workers: 4
+  symboreg_oscillator2:
+    seed: 21
+    max_workers: 4
+  bin_packing:
+    n_init: 7
+    parent_slots: 2
+    child_slots: 10
+    max_workers: 4
+    seed: 42
+    dataset_type: or3

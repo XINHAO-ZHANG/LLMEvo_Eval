@@ -6,7 +6,7 @@ import json
 import re
 import time
 import pickle
-from evolve_core.db import Genome
+from evolve.db import Genome
 
 # ------------------------------ CONFIG ---------------------------------- #
 import os

@@ -1,11 +1,15 @@
 import os
 import json
-import wandb
 from typing import Any
 
 import pandas as pd 
 import numpy as np
 from sklearn.decomposition import PCA
+
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 def _hash_vec(obj: Any, dim: int = 16) -> np.ndarray:
     h = abs(hash(json.dumps(obj, sort_keys=True)))
@@ -13,8 +17,18 @@ def _hash_vec(obj: Any, dim: int = 16) -> np.ndarray:
     for i in range(dim):
         vec[i] = (h >> (i * 4)) & 0xF    # 4-bit chunks
     return vec
+
 def make_wandb_callback(project: str, cfg: dict):
-    run = wandb.init(project=project, config=cfg)
+    """Return a logging callback. If wandb is not installed or not logged in, returns a no-op callback."""
+    run = None
+    if wandb is not None:
+        try:
+            run = wandb.init(project=project, config=cfg)
+        except Exception as e:
+            print(f"[wandb] Skipping logging (e.g. not logged in): {e}")
+            run = None
+    if run is None:
+        return lambda log: None  # no-op callback
     # 用于存储所有代的数据
     all_gens_1d_pca_evolution_data = []
     

@@ -4,7 +4,7 @@ import textwrap
 import random
 import json
 import re
-from evolve_core.db import Genome
+from evolve.db import Genome
 
 # ------------------------------ CONFIG ---------------------------------- #
 import os
