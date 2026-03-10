@@ -4,7 +4,6 @@
 # no logs
 logs/
 archived_logs/
-*.sh
 *.out
 wandb/
 runs/
