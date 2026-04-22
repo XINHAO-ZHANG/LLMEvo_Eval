@@ -29,7 +29,6 @@ def make_wandb_callback(project: str, cfg: dict):
             run = None
     if run is None:
         return lambda log: None  # no-op callback
-    # 用于存储所有代的数据
     all_gens_1d_pca_evolution_data = []
     
     def _cb(log):
@@ -60,7 +59,7 @@ def make_wandb_callback(project: str, cfg: dict):
             vecs = np.vstack([_hash_vec(p["genome"]) for p in pop])
             coords = PCA(n_components=2, random_state=0).fit_transform(vecs)
 
-            # 1. 保存每一代的单独散点图
+            # per-generation scatter plot
             table = wandb.Table(columns=["x", "y", "score"])
             for (x, y), p in zip(coords, pop):
                 table.add_data(float(x), float(y), float(p["score"]))
@@ -75,7 +74,7 @@ def make_wandb_callback(project: str, cfg: dict):
             pca_1d = PCA(n_components=1, random_state=0)
             coords_1d = pca_1d.fit_transform(vecs)
 
-            # 2a. 收集数据用于1D PCA演化趋势图
+            # accumulate data for 1D PCA evolution trend
             for i, p_item in enumerate(pop):
                     all_gens_1d_pca_evolution_data.append({
                                 "Generation": int(gen_idx),
@@ -84,7 +83,7 @@ def make_wandb_callback(project: str, cfg: dict):
                             })
 
 
-        # 1. 画出所有代的散点图
+        # 1D PCA scatter across all generations
         all_gens_1d_pca_evolution_df = pd.DataFrame(all_gens_1d_pca_evolution_data)
         table_all_gens = wandb.Table(dataframe=all_gens_1d_pca_evolution_df)
         fig = wandb.plot.scatter(table_all_gens, x="Generation", y="PCA_1D_Value",

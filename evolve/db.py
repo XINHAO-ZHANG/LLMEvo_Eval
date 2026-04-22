@@ -18,13 +18,13 @@ class Genome:
     def _to_tuple(self, x):
         if isinstance(x, (list, tuple)):
             return tuple(self._to_tuple(i) for i in x)
-        elif hasattr(x, 'tolist'):  # 兼容numpy array
+        elif hasattr(x, 'tolist'):  # handle numpy arrays
             return tuple(self._to_tuple(i) for i in x.tolist())
         else:
             return x
 
     def __hash__(self):
-        # 只用genome字段参与hash，loss和extra不参与
+        # only genome participates in hash; loss and extra are ignored
         return hash(self._to_tuple(self.genome))
 
     def __eq__(self, other):
@@ -48,44 +48,39 @@ class SimplePoolDB:
         self.rng = rng or random.Random()
         self.pool: List[Genome] = []
         self.best_score = float("inf")
-        self.genome_hashes = set()  # 用于检查唯一性
+        self.genome_hashes = set()  # for deduplication
 
     # ---------- lifecycle ----------
     def init(self, n_init: int, rng: random.Random | None = None) -> None:
         rng = rng or self.rng
         self.pool = []
-        self.genome_hashes = set()  # 重置哈希集
-        
-        # 使用seed_pool生成初始基因组并添加到池中
+        self.genome_hashes = set()
+
         for g in self.task.seed_pool(n_init, rng):
             if g in self.genome_hashes:
                 continue
             self.pool.append(g)
             self.genome_hashes.add(g)
-            
+
         if self.capacity and len(self.pool) > self.capacity:
             self.pool = self.pool[: self.capacity]
-            # 重建哈希集
             self.genome_hashes = set(g for g in self.pool)
-        
-        # 更新最佳分数
+
         if self.pool:
             self.best_score = min(g.loss for g in self.pool)
 
     # ---------- public API ----------
 
     def _hash_genome(self, genome: Any) -> int:
-        """生成基因组的哈希值，用于检查唯一性"""
+        """Return a hash of the genome for deduplication."""
         return hash(tuple(genome) if hasattr(genome, "__iter__") else genome)
-        
+
     def sample(self, k: int, top_frac: float = 0.2) -> List[Genome]:
-        # 先选出fitness最小的前N名，再从中随机采样k个
+        # select top-N by fitness, then sample k weighted by inverse loss
         n_top = max(1, int(len(self.pool) * top_frac))
         sorted_pool = sorted(self.pool, key=lambda g: g.loss)
         top_pool = sorted_pool[:n_top]
-        # 计算权重（概率），权重与损失成反比
         weights = np.array([1.0 / (g.loss + 1e-8) for g in top_pool])
-        # 归一化为概率
         probs = weights / weights.sum()
         idx = np.random.choice(len(top_pool), size=min(k, len(top_pool)), p=probs, replace=False)
         return [top_pool[i] for i in idx]
@@ -97,7 +92,6 @@ class SimplePoolDB:
             self.pool.append(g)
             self.genome_hashes.add(g)
             self.best_score = min(self.best_score, g.loss)
-        # 如果超过容量，则按 fitness 升序（假设越小越好）截断
         if self.capacity and len(self.pool) > self.capacity:
             self.pool.sort(key=lambda g: g.loss)
             self.pool = self.pool[:self.capacity]
@@ -112,13 +106,11 @@ class SimplePoolDB:
         path.write_text(json.dumps([asdict(g) for g in self.pool]))
 
     def from_json(self, path: Path):
-        # 读取为Genome对象
         raw = json.loads(path.read_text())
         self.pool = [Genome(**g) for g in raw]
         self.genome_hashes = set()
         for g in self.pool:
             self.genome_hashes.add(g)
-        # 更新最佳分数
         if self.pool:
             self.best_score = min(g.loss for g in self.pool)
 

@@ -3,9 +3,9 @@ defaults:
 
 
 # =========================
-# 全局默认参数
+# Global default parameters
 # =========================
-# model: 
+# model options:
 #   - openai/gpt-4o
 #   - openai/gpt-4o-mini
 #   - openai/gpt-3.5-turbo
@@ -47,7 +47,7 @@ defaults:
 # capacity: int
 # init_pop_path: str or null
 # enable_zero_shot_eval: bool
-# max_workers: int (并行子代生成的最大worker数量，null表示自动)
+# max_workers: int (max parallel workers for offspring generation; null=auto)
 
 task: tsp
 model: openai/gpt-4o-mini
@@ -61,11 +61,7 @@ seed: 21
 capacity: 40
 init_pop_path: null
 enable_zero_shot_eval: false
-max_workers: null  # 自动选择并行度，可设置为1, 2, 4, 8等
-
-# For task-specific options:
-# tsp:
-# kernelopt:
+max_workers: null  # auto-select; set to 1, 2, 4, 8, etc.
 
 tasks:
   tsp:
@@ -73,21 +69,18 @@ tasks:
     n_init: 40
     parent_slots: 3
     child_slots: 10
-    max_workers: 4  # TSP评估相对较快，可以使用较高并行度
-    # 其他tsp专属参数
+    max_workers: 4  # TSP eval is fast; high parallelism OK
   kernelopt:
     n_init: 2
     parent_slots: 1
     child_slots: 1
     capacity: 2
-    max_workers: 1  # kernelopt评估可能比较复杂，谨慎并行
-    # 其他kernelopt专属参数
+    max_workers: 1  # kernelopt eval may be heavy; low parallelism
   gcolor:
     n_init: 50
     parent_slots: 5
     child_slots: 10
-    max_workers: 4  # 图着色问题适中的并行度
-    # 其他gcolor专属参数
+    max_workers: 4
   promptopt:
     n_init: 10
     parent_slots: 2
@@ -95,11 +88,10 @@ tasks:
     budget: 150
     eval_task: sum   # sum: summarization, sim: simplification
     eval_set: test
-    max_workers: 2  # promptopt有API调用，限制并行度避免限流
-    # 其他promptopt专属参数
+    max_workers: 2  # promptopt makes API calls; limit to avoid rate-limiting
   symboreg_oscillator1:
     seed: 21
-    max_workers: 4  # 符号回归评估较快，可用中等并行度
+    max_workers: 4
   symboreg_oscillator2:
     seed: 21
     max_workers: 4
@@ -111,10 +103,7 @@ tasks:
     seed: 42
     dataset_type: or3  # or 'weibull'
 
-    # 其他可选参数
-
-# Hydra: 不按时间戳创建新的运行目录，实验输出统一由 run_exp 指定到 outputs/{model}_{task}_temp{temp}_{seed}_{ts}
+# Hydra: disable automatic timestamped dirs; outputs managed by scripts/run_exp.py
 hydra:
   run:
     dir: .
-

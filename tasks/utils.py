@@ -34,10 +34,10 @@ def build_distance_matrix(coords: np.ndarray) -> np.ndarray:
 
 def compute_rouge(preds: list[str], refs: list[str]) -> dict:
     """
-    计算ROUGE-1/2/L分数，严格调用HuggingFace evaluate库。
-    preds: 生成的摘要列表
-    refs:  参考摘要列表
-    返回: dict, 包含rouge1/rouge2/rougeL等分数
+    Compute ROUGE-1/2/L scores using the HuggingFace evaluate library.
+    preds: list of generated summaries
+    refs:  list of reference summaries
+    Returns: dict with rouge1/rouge2/rougeL scores
     """
     rouge = evaluate.load("rouge")
     results = rouge.compute(predictions=preds, references=refs)
@@ -46,12 +46,12 @@ def compute_rouge(preds: list[str], refs: list[str]) -> dict:
 
 def compute_sari(sources: list[str], preds: list[str], refs: list[list[str]]) -> dict:
     """
-    sources: 原始句子列表
-    preds:   生成的简化句子列表
-    refs:    多参考简化句子列表（每个元素是list of refs）
-    返回: dict, 包含sari等分数
+    Compute SARI score using the HuggingFace evaluate library.
+    sources: list of original sentences
+    preds:   list of simplified sentences
+    refs:    list of reference simplifications (each element is a list of refs)
+    Returns: dict with sari score
     """
-    
     sari = evaluate.load("sari")
     results = sari.compute(sources=sources, predictions=preds, references=refs)
     return results

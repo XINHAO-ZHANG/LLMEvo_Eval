@@ -10,19 +10,18 @@ from evolve.db import Genome
 import os
 from pathlib import Path
 
-# 获取项目根目录的绝对路径
-PROJECT_ROOT = Path(__file__).parent.parent  # tasks目录的上一级
+PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / "data" / "symboreg" / "oscillator1"
-MAX_NPARAMS = 3  # 以三项为例，和骨架保持一致
+MAX_NPARAMS = 3
 ALLOWED_FUNCS = ["np.sin", "np.cos", "np.exp", "np.log", "np.abs", "np.sqrt"]
 EQUATION_TEMPLATE = """
 def equation(x, v, params):
-    
+
     return params[0]*x + params[1]*v + params[2]
 """
 SYS_PROMPT = "You are a scientific equation discovery expert. Your goal is to propose symbolic expressions that fit the data well (lower MSE is better)."
 
-# -------------------------- 数据加载与适应度 ----------------------------- #
+# ------------------------------ DATA & FITNESS -------------------------- #
 def load_data(split="train"):
     df = pd.read_csv(f"{DATA_DIR}/{split}.csv")
     X = df[["x", "v"]].values
@@ -35,38 +34,33 @@ def eval(code_str, split="train") -> float:
     try:
         local_env = {}
         exec(code_str, {"np": np}, local_env)
-        equation = local_env.get("equation")  # 使用get方法避免KeyError
-        
+        equation = local_env.get("equation")
+
         if equation is None:
-            return 1e6  # 返回高损失而不是None
-            
+            return 1e6
+
         y_pred = equation(X[:,0], X[:,1])
         if np.any(np.isnan(y_pred)) or np.any(np.isinf(y_pred)):
             return 1e6
         mse = np.mean((y_pred - y_true) ** 2)
-        return float(mse)  # 确保返回float类型
+        return float(mse)
     except Exception:
-        return 1e6  # 返回高损失而不是None
+        return 1e6
 
 def eval_tout(genome):
     return {split: eval(genome, split) for split in ["train", "test_id", "test_ood"]}
 
 def repair(code_str: str) -> str:
-    """修复代码字符串，如果无法修复则返回原字符串"""
     if code_str is None:
         return ""
-    
-    # 这里可以添加具体的修复逻辑
-    # 目前只是简单返回原字符串
     return code_str
 
 def create_fallback_genome():
-    """当LLM生成失败时，创建一个fallback基因组"""
     fallback_code = "def equation(x, v):\n    return 0"
-    fallback_loss = 1e6  # 很高的损失值，确保不会被选择
+    fallback_loss = 1e6
     return fallback_code, fallback_loss
 
-# -------------------------- 进化相关接口 ----------------------------- #
+# ------------------------------ EVOLUTION INTERFACE --------------------- #
 def random_expr(rng: random.Random, max_terms=5):
     ops = ["+", "-", "*", "/"]
     funcs = ["", "np.sin", "np.cos", "np.exp", "np.log", "np.abs"]
@@ -80,16 +74,14 @@ def random_expr(rng: random.Random, max_terms=5):
         coef = rng.uniform(-2, 2)
         base = f"{coef:.3f}*{var}"
         if op == "/":
-            # 分母加绝对值和小常数
+            # avoid division by zero
             denom = f"np.abs({base})+1e-6"
             numer = f"{rng.uniform(-2,2):.3f}*{rng.choice(vars)}"
             term = f"/ ({denom})"
-            # 让分子和分母都合理
             if func and func != "np.log":
                 numer = f"{func}({numer})"
             term = f"{op} {numer} {term}"
         else:
-            # 其他操作同上
             if func == "np.log":
                 base = f"np.abs({base})+1e-6"
             if func:
@@ -114,35 +106,24 @@ def seed_pool(n: int, rng: random.Random):
 def diversity_key(g: Genome):
     return hash(g.genome[:40])
 
-# -------------------------- LLM交互相关 ----------------------------- #
+# ------------------------------ LLM INTERFACE --------------------------- #
 def get_zero_shot_prompt(seed=None, temperature_index=None, call_index=None):
-    """
-    生成zero-shot提示，支持精细的种子控制
-    
-    Args:
-        seed: 基础种子，如果为None则不控制随机性
-        temperature_index: 温度索引 (0-4 对应 5种温度)
-        call_index: 调用索引 (0-1 对应每种温度的2次调用)
-    """
+    """Generate zero-shot prompt with fine-grained seed control."""
     sys = SYS_PROMPT
     X, y = load_data("train")
-    
-    # 精细的种子控制策略
+
     if seed is not None:
         if temperature_index is not None and call_index is not None:
-            # 为每种温度的每次调用生成独特但确定性的种子
             specific_seed = seed + temperature_index * 100 + call_index * 10
         else:
-            # 使用基础种子
             specific_seed = seed
-        
         np.random.seed(specific_seed)
         print(f"Zero-shot sampling with seed: {specific_seed} (temp_idx={temperature_index}, call_idx={call_index})")
-    
+
     idx = np.random.choice(len(X), size=100, replace=False)
     sample = [{"x": float(X[i][0]), "v": float(X[i][1]), "a": float(y[i])} for i in idx]
     ques_block = json.dumps(sample, ensure_ascii=False, indent=2)
-    
+
     user = textwrap.dedent(f"""
         TASK DESC    : {describe()}
         QUESTION    : Here are some data points:

@@ -56,7 +56,6 @@ def _temp_str(t: float) -> str:
 
 @hydra.main(config_path="../config", config_name="exp_grid")
 def main(cfg: DictConfig):
-    # 选择任务专属参数并merge
     task_cfg = cfg.tasks.get(cfg.task, {})
     OmegaConf.set_struct(cfg, False)
     cfg = OmegaConf.merge(cfg, task_cfg)
@@ -66,7 +65,6 @@ def main(cfg: DictConfig):
 
     task_mod = load_task(cfg.task)
     
-    # 配置任务模块
     if hasattr(task_mod, 'configure'):
         task_mod.configure(cfg)
     
@@ -75,7 +73,6 @@ def main(cfg: DictConfig):
     temp_str = _temp_str(temp)
     seed = cfg.seed
     ts = int(time.time())
-    # 输出目录：outputs/{任务参数}_temp{温度}_{seed}_{时间戳}
     out_dir = PROJECT_ROOT / "outputs" / f"{task_label}_temp{temp_str}_{seed}_{ts}"
 
     stats = run_evolve(
@@ -90,7 +87,7 @@ def main(cfg: DictConfig):
         budget_calls=cfg.budget,
         db_mode=cfg.db_mode,
         db_kwargs={"capacity": cfg.capacity},
-        max_workers=cfg.get("max_workers", None),  # 支持并行配置
+        max_workers=cfg.get("max_workers", None),
         log_callback=make_wandb_callback(project=f"EvolveEval-{cfg.task}-new", cfg=OmegaConf.to_container(cfg)),
         temperature=temp,
         out_dir=out_dir,

@@ -15,13 +15,13 @@ from evolve.db import Genome
 
 # ------------------------------ CONFIG ---------------------------------- #
 
-# 获取项目根目录的绝对路径
-PROJECT_ROOT = Path(__file__).parent.parent  # tasks目录的上一级
+PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / "data" / "tsp"
 
-CITY_NUM = 30  # 默认
+CITY_NUM = 30
 DIST = None
 SYS_PROMPT = """You are an optimization expert helping to solve a hard problem. You will be shown several candidate solutions with their scores. Your goal is to propose better solutions (lower score is better). """
+
 def configure(cfg=None):
     global CITY_NUM, DIST
     if cfg and hasattr(cfg, "city_num"):
@@ -67,18 +67,18 @@ def repair(paths: list[list[int]]) -> list[list[int]]:
     return fixed
 
 def diversity_key(g: Genome):
-    return tuple(g.genome[:3]) # rough hash of first 3 cities
+    return tuple(g.genome[:3])
 
 # ------------------------- CONTEXT FOR LLM ------------------------------ #
 def parse_response(resp):
     content = resp.get("text", "")
-    # 1. 先找json代码块
+
+    # 1. look for a json code block
     m = re.search(r'```json(.*?)```', content, re.S)
     if m:
         try:
             data = json.loads(m.group(1))
             data["usage"] = resp.get("usage", {"total_tokens": 0})
-            # genome为字符串时，尝试转为list
             if isinstance(data.get("genome"), str):
                 try:
                     genome_eval = ast.literal_eval(data["genome"])
@@ -89,7 +89,8 @@ def parse_response(resp):
             return data
         except Exception:
             pass
-    # 2. 直接找大括号
+
+    # 2. look for a bare JSON object containing "genome"
     m = re.search(r'({[^{}]*"genome"[^{}]*})', content, re.S)
     if m:
         try:
@@ -117,7 +118,8 @@ def parse_response(resp):
                 return data
             except Exception:
                 pass
-    # 3. 只找genome数组（字符串或列表）
+
+    # 3. look for a genome array directly
     m = re.search(r'"genome"\s*:\s*(\[.*?\])', content, re.S)
     if m:
         arr_str = m.group(1).strip()
@@ -127,7 +129,8 @@ def parse_response(resp):
                 return {"genome": genome, "usage": resp.get("usage", {"total_tokens": 0})}
         except Exception:
             pass
-    # 4. 兜底：如果resp本身是json字符串
+
+    # 4. try parsing the whole content as JSON
     try:
         data = json.loads(content)
         if isinstance(data.get("genome"), str):
@@ -141,14 +144,12 @@ def parse_response(resp):
         return data
     except Exception:
         pass
-    # 5. 兜底
+
+    # 5. fallback
     return {"genome": None, "text": content, "usage": resp.get("usage", {"total_tokens": 0})}
 
 def get_zero_shot_prompt(seed=None, temperature_index=None, call_index=None):
-    """
-    生成TSP任务的zero-shot prompt
-    参数 seed, temperature_index, call_index 为了兼容接口，实际不使用
-    """
+    """Generate TSP zero-shot prompt. seed/temperature_index/call_index accepted for interface compatibility."""
     sys = SYS_PROMPT
     ques_block = json.dumps({"distance_matrix": DIST.tolist()}, ensure_ascii=False, indent=2)
     user = dedent(
@@ -179,14 +180,13 @@ def get_evolve_prompt(sampled_parents: list[list[int]]):
         ```json
         {parent_block}
         ```
-        Please return one BETTER child genome as JSON without any extra text: {{ "genome": "<full-new>" }}. 
+        Please return one BETTER child genome as JSON without any extra text: {{ "genome": "<full-new>" }}.
         ATTENTION: The genome should be a list of {CITY_NUM} unique integers from 0 to {CITY_NUM-1}.
         """
     )
-    
+
     return [{"role": "system", "content": sys},
             {"role": "user", "content": user}]
-    
 
 
 def describe() -> str:
@@ -196,14 +196,8 @@ def describe() -> str:
         "The distances between each pair of cities are provided below.The distance matrix is as follows (row i column j means distance from city i to city j):"
     )
 
-# def get_genome_desc() -> str:
-#     return f"A valid genome for the TSP task is a list of {CITY_NUM} unique integers from 0 to {CITY_NUM-1}."
-
-# def crossover_guiline() -> str:
-#     return "The crossover operator for the TSP is a simple one: two parent routes are combined to create a new child route. The child route is constructed by alternating the cities of the two parent routes, with a random number of cities from each parent included in the child. The resulting child route is then checked for validity and returned."
-
 def create_fallback_genome():
-    """创建一个简单的顺序路径作为fallback"""
+    """Create a simple sequential path as fallback."""
     fallback_path = list(range(CITY_NUM))
     fallback_loss = eval(fallback_path)
     return fallback_path, fallback_loss

@@ -2,11 +2,12 @@
 llm_ops.api
 ===========
 
-Single entry-point `call_llm()` used everywhere in GA loop.
+Single entry-point `call_llm()` used everywhere in the GA loop.
 Supports:
-  • OpenAI  (gpt-3.5-turbo, gpt-4o,…)
+  • OpenAI  (gpt-3.5-turbo, gpt-4o, …)
   • Azure-OpenAI  (model endswith ":azure")
-  • Ollama / local http://127.0.0.1:11434  (model name自由)
+  • Ollama / local http://127.0.0.1:11434  (any model name)
+  • OpenRouter, HuggingFace, Cerebras
 
 Install deps:
   pip install openai requests
@@ -37,22 +38,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # HuggingFace Client
-
 huggingface_client = None
 if os.getenv("HUGGINGFACEHUB_API_TOKEN"):
-    huggingface_client = OpenAI(api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"), base_url=os.getenv("HUGGINGFACEHUB_API_URL", "https://router.huggingface.co/v1"))
+    huggingface_client = OpenAI(
+        api_key=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+        base_url=os.getenv("HUGGINGFACEHUB_API_URL", "https://router.huggingface.co/v1")
+    )
+
 # Cerebras Client (optional)
 cerebras_client = Cerebras(api_key=os.getenv("CEREBRAS_API_KEY")) if Cerebras and os.getenv("CEREBRAS_API_KEY") else None
 
 # OpenRouter client (optional; required for mistralai, deepseek, meta-llama, etc.)
 openrouter_client = None
 if os.getenv("OPENROUTER_API_KEY"):
-    openrouter_client = OpenAI(api_key=os.getenv("OPENROUTER_API_KEY"), base_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1"))
+    openrouter_client = OpenAI(
+        api_key=os.getenv("OPENROUTER_API_KEY"),
+        base_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1")
+    )
 
 # OpenAI Client (optional)
 openai_client = None
 if os.getenv("OPENAI_API_KEY"):
-    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_API_URL", "https://api.openai.com"))
+    openai_client = OpenAI(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        base_url=os.getenv("OPENAI_API_URL", "https://api.openai.com")
+    )
 
 # Azure OpenAI Client
 azure_client = None
@@ -60,7 +70,7 @@ if os.getenv("AZURE_OPENAI_ENDPOINT") and os.getenv("AZURE_OPENAI_API_KEY"):
     azure_client = AzureOpenAI(
         azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
         api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01") # Use a default or env var
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
     )
 
 # --------------------------------------------------------------------------- #
@@ -68,8 +78,7 @@ if os.getenv("AZURE_OPENAI_ENDPOINT") and os.getenv("AZURE_OPENAI_API_KEY"):
 # --------------------------------------------------------------------------- #
 def _provider_from(model_name: str) -> str:
     if model_name.endswith(":azure"): return "azure"
-    # Basic check for common local model names, adjust as needed
-    if model_name.startswith(("Qwen","IDinsight")) or model_name.endswith(":cerebras"):
+    if model_name.startswith(("Qwen", "IDinsight")) or model_name.endswith(":cerebras"):
         return "huggingface"
     if model_name.startswith(("deepseek", "meta-llama", "x-ai", "mistralai", "minimax", "google")):
         return "openrouter"
@@ -91,29 +100,26 @@ def call_llm(
     max_tokens: int = 120,
     temperature: float = 0.7,
     seed: int | None = None,
-    max_retries: int = 5,  # 添加重试次数参数
+    max_retries: int = 5,
 ) -> Dict[str, Any]:
     """
-    Generic LLM caller. Returns a dict that **必须** 至少有键:
-        - "genome" 或 "text"
-        - "usage"  (dict 包含 total_tokens)
-    下游 GA 会用到 usage（计费）以及 genome/text。
+    Generic LLM caller. Returns a dict with at least:
+        - "text"   : the model's response string
+        - "usage"  : dict containing total_tokens
 
     `prompt_or_msgs`:
-        • str  → 传统 prompt
-        • list[{"role": "...", "content": "..."}] → Chat 完整消息
-        
-    重试机制：
-        • 最多重试 max_retries 次
-        • 在连接错误、超时或API错误时重试
+        • str  → plain prompt
+        • list[{"role": "...", "content": "..."}] → full chat messages
+
+    Retry policy: up to max_retries attempts with linear back-off on
+    connection errors, timeouts, and API errors.
     """
     prov = _provider_from(model)
-    model_name = model.split(":azure")[0] # Get base model name
-    
-    # 实现重试逻辑
+    model_name = model.split(":azure")[0]
+
     retry_count = 0
     last_error = None
-    
+
     while retry_count <= max_retries:
         try:
             if prov == "openai":
@@ -126,7 +132,7 @@ def call_llm(
                 return _call_huggingface(huggingface_client, prompt_or_msgs, model_name, temperature, max_tokens, seed)
             elif prov == "cerebras":
                 if not cerebras_client:
-                    raise EnvironmentError("Cerebras OpenAI environment variables missing or Cerebras client not initialized!")
+                    raise EnvironmentError("Cerebras environment variables missing or Cerebras client not initialized!")
                 return _call_cerebras(cerebras_client, prompt_or_msgs, model_name, temperature, max_tokens, seed)
             elif prov == "openrouter":
                 if not openrouter_client:
@@ -140,24 +146,20 @@ def call_llm(
                 return _call_ollama(prompt_or_msgs, model_name, temperature, max_tokens, seed)
             else:
                 raise ValueError(f"Unknown provider for model '{model}'")
-        except (requests.exceptions.RequestException, openai.APIError, openai.RateLimitError, 
+        except (requests.exceptions.RequestException, openai.APIError, openai.RateLimitError,
                 openai.APIConnectionError, json.JSONDecodeError, ValueError) as e:
             last_error = e
             retry_count += 1
-            print(f"LLM call failed ( attempt {retry_count}/{max_retries}): {str(e)}")
-            
+            print(f"LLM call failed (attempt {retry_count}/{max_retries}): {str(e)}")
             if retry_count > max_retries:
                 break
-                
-            # 简单的退避策略
             import time
-            time.sleep(2 * retry_count)  # 递增等待时间
+            time.sleep(2 * retry_count)  # linear back-off
             continue
-    
-    # 如果所有重试都失败，返回一个基本结构以避免下游处理错误
-    print(f"警告: 所有LLM调用尝试都失败: {str(last_error)}")
+
+    print(f"Warning: all LLM call attempts failed: {str(last_error)}")
     return {
-        "text": f"LLM调用失败: {str(last_error)}",
+        "text": f"LLM call failed: {str(last_error)}",
         "error": str(last_error),
         "usage": {"total_tokens": 0}
     }
@@ -181,7 +183,7 @@ def _call_openrouter(client: OpenAI, prompt, model, temperature, max_tokens, see
     return data
 
 # ────────────────────────────────────────────────────────────────────────────
-#   cerebras
+#  Cerebras
 # ────────────────────────────────────────────────────────────────────────────
 def _call_cerebras(client: Any, prompt, model, temperature, max_tokens, seed):
     kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens)
@@ -199,9 +201,9 @@ def _call_cerebras(client: Any, prompt, model, temperature, max_tokens, seed):
     return data
 
 # ────────────────────────────────────────────────────────────────────────────
-#  HF Models
+#  HuggingFace
 # ────────────────────────────────────────────────────────────────────────────
-def _call_huggingface(client: HuggingFace, prompt, model, temperature, max_tokens, seed):
+def _call_huggingface(client, prompt, model, temperature, max_tokens, seed):
     kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens)
     if seed is not None:
         kwargs["seed"] = seed
@@ -219,7 +221,6 @@ def _call_huggingface(client: HuggingFace, prompt, model, temperature, max_token
 # ────────────────────────────────────────────────────────────────────────────
 #  OpenAI
 # ────────────────────────────────────────────────────────────────────────────
-
 def _call_openai(client: OpenAI, prompt, model, temperature, max_tokens, seed):
     kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens)
     if seed is not None:
@@ -231,26 +232,8 @@ def _call_openai(client: OpenAI, prompt, model, temperature, max_tokens, seed):
     content = resp.choices[0].message.content
     usage = resp.usage.to_dict() if resp.usage else None
 
-    # try:
-    #     data = json.loads(content)
-    # except Exception:
-    #     # 尝试截取 ```json ... ``` 
-    #     import re, textwrap
-    #     m = re.search(
-    # r'(?:```json(.*?)```|<think>\s*</think>\s*({.*?}))',
-    # content,
-    # re.S)
-    #     if m:
-    #         try:
-    #             data = json.loads(m.group(1) or m.group(2))
-    #         except Exception:
-    #             print(f"JSON parsing failed: {m.group(1) or m.group(2)}")
-    #             data = {"text": content}
-    #     else:
-    #         print(f"JSON parsing failed: {content}")
-    #         data = {"text": content}
     data = {"text": content}
-    data["usage"] = usage or {"total_tokens": 0} # Provide default usage if None
+    data["usage"] = usage or {"total_tokens": 0}
     return data
 
 
@@ -259,7 +242,7 @@ def _call_openai(client: OpenAI, prompt, model, temperature, max_tokens, seed):
 # ────────────────────────────────────────────────────────────────────────────
 def _call_azure(client: AzureOpenAI, prompt, deployment_name, temperature, max_tokens, seed):
     kwargs = dict(
-        model=deployment_name, # Use model instead of engine
+        model=deployment_name,
         temperature=temperature,
         max_tokens=max_tokens,
     )
@@ -285,7 +268,6 @@ def _call_azure(client: AzureOpenAI, prompt, deployment_name, temperature, max_t
 def _call_ollama(prompt, model, temperature, max_tokens, seed):
     url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
 
-    # Handle list of messages - simple concatenation for now
     if isinstance(prompt, list):
         prompt_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in prompt])
     else:
@@ -307,7 +289,6 @@ def _call_ollama(prompt, model, temperature, max_tokens, seed):
         resp_json = response.json()
         content = resp_json.get("response", "")
 
-        # Use more accurate token counts if available
         prompt_tokens = resp_json.get("prompt_eval_count", 0)
         completion_tokens = resp_json.get("eval_count", 0)
         usage = {
@@ -318,14 +299,12 @@ def _call_ollama(prompt, model, temperature, max_tokens, seed):
 
     except requests.exceptions.RequestException as e:
         print(f"Ollama request failed: {e}")
-        # Fallback or re-raise
         content = ""
         usage = {"total_tokens": 0}
     except json.JSONDecodeError as e:
         print(f"Failed to decode Ollama JSON response: {e}")
-        content = response.text # Store raw text if JSON fails
+        content = response.text
         usage = {"total_tokens": 0}
-
 
     try:
         data = json.loads(content)

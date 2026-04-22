@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-计算遗传算法中的 local refinement rate。
-支持对 outputs 下不同 temp 的实验文件夹批量计算。
+Compute the local refinement rate for evolutionary runs stored under outputs/.
+Supports batch processing across temperature settings.
 """
 
 import json
@@ -13,7 +13,7 @@ OUTPUTS_DIR = Path(__file__).resolve().parent / "outputs"
 
 
 def load_generation_data(file_path):
-    """加载每一代的数据"""
+    """Load per-generation records from a gen_log.jsonl file."""
     generations = []
     with open(file_path, 'r') as f:
         for line_num, line in enumerate(f, 1):
@@ -26,9 +26,7 @@ def load_generation_data(file_path):
             except json.JSONDecodeError as e:
                 print(f"Error parsing line {line_num}: {e}")
                 print(f"Line content (first 100 chars): {line[:100]}...")
-                # Try to find where the JSON ends
                 try:
-                    # Find the position where the first valid JSON ends
                     decoder = json.JSONDecoder()
                     obj, idx = decoder.raw_decode(line)
                     generations.append(obj)
@@ -39,14 +37,17 @@ def load_generation_data(file_path):
     return generations
 
 def find_parent_scores(parent_genome, population):
-    """在population中找到对应parent genome的score"""
+    """Look up the score of a parent genome in a population snapshot."""
     for individual in population:
         if individual['genome'] == parent_genome:
             return individual['score']
     return None
 
 def calculate_local_refinement_rate(generations, verbose=False):
-    """计算 local refinement rate。verbose 为 True 时打印每一代与每个 offspring 的详情。"""
+    """
+    Compute local refinement rate: fraction of offspring that strictly
+    improve upon their best parent.
+    """
     total_refinements = 0
     total_offspring = 0
     generation_stats = []
@@ -106,7 +107,7 @@ def calculate_local_refinement_rate(generations, verbose=False):
 
 
 def find_experiment_dirs(outputs_dir: Path):
-    """在 outputs 下查找所有包含 gen_log.jsonl 的实验目录。"""
+    """Find all experiment directories under outputs/ that contain gen_log.jsonl."""
     if not outputs_dir.is_dir():
         return []
     dirs = []
@@ -117,7 +118,7 @@ def find_experiment_dirs(outputs_dir: Path):
 
 
 def get_best_curve_min(exp_dir: Path):
-    """读取 stats.json 中 best_curve 的最小值，若无则返回 None。"""
+    """Return the minimum value in best_curve from stats.json, or None."""
     stats_file = exp_dir / "stats.json"
     if not stats_file.is_file():
         return None
@@ -134,14 +135,14 @@ def get_best_curve_min(exp_dir: Path):
 
 def parse_experiment_dir_name(dir_name: str):
     """
-    解析目录名，提取 task_label, temp, seed, ts。
-    格式: {task_label}_temp{temp_str}_{seed}_{ts}，例如 tsp30_temp0p5_21_1771350319
+    Parse an experiment directory name into components.
+    Format: {task_label}_temp{temp_str}_{seed}_{ts}
+    e.g.  tsp30_temp0p5_21_1771350319
     """
     m = re.match(r"^(.+)_temp([^_]+)_(\d+)_(\d+)$", dir_name)
     if not m:
         return None
     task_label, temp_str, seed, ts = m.groups()
-    # temp_str 如 0p5 -> 0.5, 1p1 -> 1.1
     try:
         temp = float(temp_str.replace("p", ".").replace("m", "-"))
     except ValueError:
@@ -151,15 +152,19 @@ def parse_experiment_dir_name(dir_name: str):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="计算 outputs 下各 temp 实验的 local refinement rate")
+    parser = argparse.ArgumentParser(
+        description="Compute local refinement rate for experiments under outputs/"
+    )
     parser.add_argument(
         "outputs_dir",
         nargs="?",
         default=str(OUTPUTS_DIR),
-        help="实验输出根目录，默认: outputs",
+        help="Root experiment output directory (default: outputs/)",
     )
-    parser.add_argument("-v", "--verbose", action="store_true", help="打印每一代与每个 offspring 的详情")
-    parser.add_argument("--single", type=str, metavar="PATH", help="仅对单个 gen_log.jsonl 或实验目录计算")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Print per-generation and per-offspring details")
+    parser.add_argument("--single", type=str, metavar="PATH",
+                        help="Compute for a single gen_log.jsonl or experiment directory")
     args = parser.parse_args()
 
     if args.single:
@@ -167,7 +172,7 @@ def main():
         if path.is_dir():
             gen_log = path / "gen_log.jsonl"
             if not gen_log.is_file():
-                print(f"目录下无 gen_log.jsonl: {path}")
+                print(f"No gen_log.jsonl found in: {path}")
                 return
             file_path = gen_log
             label = path.name
@@ -175,7 +180,7 @@ def main():
             file_path = path
             label = path.parent.name if path.name == "gen_log.jsonl" else path.stem
         else:
-            print(f"不存在: {path}")
+            print(f"Path does not exist: {path}")
             return
         print(f"Loading: {file_path}")
         generations = load_generation_data(file_path)
@@ -192,13 +197,13 @@ def main():
     outputs_dir = Path(args.outputs_dir)
     experiment_dirs = find_experiment_dirs(outputs_dir)
     if not experiment_dirs:
-        print(f"在 {outputs_dir} 下未找到包含 gen_log.jsonl 的实验目录。")
+        print(f"No experiment directories with gen_log.jsonl found under {outputs_dir}.")
         return
 
-    print(f"在 {outputs_dir} 下找到 {len(experiment_dirs)} 个实验目录\n")
+    print(f"Found {len(experiment_dirs)} experiment directories under {outputs_dir}\n")
     results = []
 
-    REF_BASE = 290  # 归一化 refinement 用的分母（refinement/290）
+    REF_BASE = 290  # denominator for normalized refinement count
 
     for exp_dir in experiment_dirs:
         gen_log = exp_dir / "gen_log.jsonl"
@@ -222,7 +227,6 @@ def main():
         if args.verbose:
             print(f"  [{exp_dir.name}] refinement rate = {overall_rate:.4f}\n")
 
-    # 按温度排序
     def sort_key(r):
         p = r.get("parsed")
         if p is None:
@@ -232,9 +236,9 @@ def main():
     results.sort(key=sort_key)
 
     print("=" * 90)
-    print("LOCAL REFINEMENT RATE — 各 temp 实验汇总")
+    print("LOCAL REFINEMENT RATE — summary by experiment")
     print("=" * 90)
-    print(f"{'实验目录':<38} {'温度':<6} {'best_min':<10} {'ref_rate':<14} {'ref/290':<10} {'ref/offspring'}")
+    print(f"{'Directory':<38} {'Temp':<6} {'best_min':<10} {'ref_rate':<14} {'ref/290':<10} {'ref/offspring'}")
     print("-" * 90)
     for r in results:
         p = r["parsed"]
@@ -243,9 +247,8 @@ def main():
         ref_off = f"{r['total_refinements']}/{r['total_offspring']}"
         print(f"{r['dir']:<38} {temp_str:<6} {best_str:<10} {r['overall_rate']:.4f} ({r['overall_rate']*100:.1f}%)  {r['ref_per_290']:.4f}    {ref_off}")
     print("-" * 90)
-    print(f"共 {len(results)} 个实验。ref/290 = refinement数 / 290。")
+    print(f"Total: {len(results)} experiments.  ref/290 = refinement_count / 290.")
 
-    # 按温度分组求平均
     by_temp = defaultdict(list)
     for r in results:
         p = r.get("parsed")
@@ -254,9 +257,9 @@ def main():
     if by_temp:
         print()
         print("=" * 70)
-        print("按温度平均 (每个温度下所有实验的均值)")
+        print("Average by temperature")
         print("=" * 70)
-        print(f"{'温度':<10} {'实验数':<8} {'avg(best_min)':<16} {'avg(ref_rate)':<14} {'avg(ref/290)'}")
+        print(f"{'Temp':<10} {'N':<8} {'avg(best_min)':<16} {'avg(ref_rate)':<14} {'avg(ref/290)'}")
         print("-" * 70)
         for temp in sorted(by_temp.keys()):
             group = by_temp[temp]
